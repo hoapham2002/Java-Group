@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-AiStudyHubApplication<BE-Java>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "Ai_Study_Hub.AiStudyHubApplication",
+            "projectName": "BE-Java",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
