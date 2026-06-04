@@ -9,6 +9,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -28,14 +32,23 @@ public class UserProfile {
     @Column(name = "user_id")
     private Integer userId;
 
-    @Column(name = "full_name", nullable = false, length = 50)
-    private String fullName;
+    @NotBlank(message = "Tên không được để trống")
+    @Size(max = 50, message = "Tên không được vượt quá 50 ký tự")
+    @Column(name = "first_name", length = 50)
+    private String firstName;
 
-    @Column(name = "storage_quota")
-    private Long storageQuota;
+    @NotBlank(message = "Họ không được để trống")
+    @Size(max = 50, message = "Họ không được vượt quá 50 ký tự")
+    @Column(name = "last_name", length = 50)
+    private String lastName;
 
-    @Column(name = "used_storage")
-    private Long usedStorage;
+    @Column(name = "storage_quota", columnDefinition = "bigint default 0")
+    private Long storageQuota = 0L;
+
+    @Column(name = "used_storage", columnDefinition = "bigint default 0")
+    @Min(value = 0)
+    @Max(value = 50)
+    private Long usedStorage = 0L;
 
     @Column(name = "api_call_count")
     private Integer apiCallCount;

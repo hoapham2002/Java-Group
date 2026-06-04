@@ -13,6 +13,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -33,12 +36,21 @@ public class Account {
     @Column(name = "account_id")
     private int accountID;
 
+    @NotBlank(message = "Tên tài khoản không được để trống")
+    @Size(max = 255, message = "Tên tài khoản không được vượt quá 255 ký tự")
+    @Column(name = "account_name", nullable = false)
+    private String accountName;
+
     @Column(nullable = false, unique = true)
+    @NotBlank(message = "Email không được để trống")
+    @Size(max = 255, message = "Email không được vượt quá 255 ký tự")
     private String email;
 
+    @NotBlank(message = "Mật khẩu không được để trống")
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @NotNull(message = "Vai trò không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(name = "role", columnDefinition = "varchar default 'user'")
     private UserRole role;
@@ -49,8 +61,8 @@ public class Account {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    @Column(name = "is_delete")
-    private Boolean isDelete = false;
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
 
     @Column(name = "deleted_by")
     private Integer deletedBy;
