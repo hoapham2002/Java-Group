@@ -1,7 +1,7 @@
 package Ai_Study_Hub.Domain;
 
 import java.time.LocalDateTime;
-import Ai_Study_Hub.Domain.Enum.UserRole;
+import Ai_Study_Hub.Domain.enums.UserRole;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -62,6 +62,7 @@ public class Account {
     private LocalDateTime deletedAt;
 
     @Column(name = "is_deleted")
+    @Builder.Default
     private Boolean isDeleted = false;
 
     @Column(name = "deleted_by")

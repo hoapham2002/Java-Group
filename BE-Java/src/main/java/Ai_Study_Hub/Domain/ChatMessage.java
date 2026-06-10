@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-import Ai_Study_Hub.Domain.Enum.MessageRole;
+import Ai_Study_Hub.Domain.enums.MessageRole;
 
 @Entity
 @Table(name = "chat_messages", schema = "rag_core")

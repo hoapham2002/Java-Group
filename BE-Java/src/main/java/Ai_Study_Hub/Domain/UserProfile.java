@@ -43,11 +43,13 @@ public class UserProfile {
     private String lastName;
 
     @Column(name = "storage_quota", columnDefinition = "bigint default 0")
+    @Builder.Default
     private Long storageQuota = 0L;
 
     @Column(name = "used_storage", columnDefinition = "bigint default 0")
     @Min(value = 0)
     @Max(value = 50)
+    @Builder.Default
     private Long usedStorage = 0L;
 
     @Column(name = "api_call_count")

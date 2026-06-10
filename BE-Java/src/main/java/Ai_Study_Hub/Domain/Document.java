@@ -5,7 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import Ai_Study_Hub.Domain.Enum.DocumentStatus;
+import Ai_Study_Hub.Domain.enums.DocumentStatus;
 
 @Entity
 @Table(name = "documents", schema = "rag_core")
@@ -40,6 +40,7 @@ public class Document {
     private LocalDateTime docDeletedAt;
 
     @Column(name = "is_delete")
+    @Builder.Default
     private Boolean isDelete = false;
 
     @ManyToOne(fetch = FetchType.LAZY)

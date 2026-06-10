@@ -28,7 +28,8 @@ public class ChatSession {
     private LocalDateTime sessionDeletedAt;
 
     @Column(name = "is_delete")
-    private Boolean isDelete = false;
+    @Builder.Default
+    private Boolean isDeleted = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_account_id", referencedColumnName = "account_id")
