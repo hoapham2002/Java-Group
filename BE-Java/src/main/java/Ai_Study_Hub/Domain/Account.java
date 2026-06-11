@@ -55,7 +55,10 @@ public class Account {
     @Column(name = "role", columnDefinition = "varchar default 'user'")
     private UserRole role;
 
-    @Column(name = "updated_at")
+    @Column(name = "created_at", columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at")
