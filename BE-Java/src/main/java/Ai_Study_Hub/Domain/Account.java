@@ -1,6 +1,7 @@
 package Ai_Study_Hub.Domain;
 
 import java.time.LocalDateTime;
+
 import Ai_Study_Hub.Domain.Enum.UserRole;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -34,7 +35,7 @@ public class Account {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "account_id")
-    private int accountID;
+    private Integer accountID;
 
     @NotBlank(message = "Tên tài khoản không được để trống")
     @Size(max = 255, message = "Tên tài khoản không được vượt quá 255 ký tự")
@@ -46,17 +47,27 @@ public class Account {
     @Size(max = 255, message = "Email không được vượt quá 255 ký tự")
     private String email;
 
+    @NotBlank(message = "First name không được để trống")
+    @Size(max = 255, message = "First name không được vượt quá 255 ký tự")
+    @Column(name = "first_name", nullable = false)
+    private String firstName;
+
+    @NotBlank(message = "Last name không được để trống")
+    @Size(max = 255, message = "Last name không được vượt quá 255 ký tự")
+    @Column(name = "last_name", nullable = false)
+    private String lastName;
+
     @NotBlank(message = "Mật khẩu không được để trống")
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @NotNull(message = "Vai trò không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(name = "role", columnDefinition = "varchar default 'user'")
     private UserRole role;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
@@ -72,4 +83,5 @@ public class Account {
 
     @OneToOne(mappedBy = "account", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserProfile userProfile;
+
 }
