@@ -9,6 +9,19 @@
             "projectName": "BE-Java",
             "args": "",
             "envFile": "${workspaceFolder}/.env"
+<<<<<<< HEAD
+=======
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-AiStudyHubApplication<Ai-Study-Hub-BE-Java>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "Ai_Study_Hub.AiStudyHubApplication",
+            "projectName": "Ai-Study-Hub-BE-Java",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+>>>>>>> main
         }
     ]
 }
