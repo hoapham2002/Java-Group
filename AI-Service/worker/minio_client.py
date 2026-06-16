@@ -1,7 +1,7 @@
 import io
 import boto3
 from botocore.client import Config
-from config import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY
+from core.config import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY
 
 # Khởi tạo S3 client tương thích với MinIO một lần duy nhất
 _s3_client = boto3.client(

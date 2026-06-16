@@ -11,6 +11,12 @@ langchain-community==0.3.23
 # Embedding Model (sentence-transformers tự kéo torch phù hợp)
 sentence-transformers==4.1.0
 
+# Các thư viện API và Web
+fastapi==0.115.0
+uvicorn==0.34.0
+requests==2.32.3
+pydantic==2.10.0
+
 # Kết nối CSDL Postgres và Vector
 psycopg2-binary==2.9.10
 pgvector==0.4.1

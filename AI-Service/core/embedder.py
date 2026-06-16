@@ -1,6 +1,6 @@
 from typing import List
 from sentence_transformers import SentenceTransformer
-from config import EMBEDDING_MODEL, EMBEDDING_DIM
+from core.config import EMBEDDING_MODEL, EMBEDDING_DIM
 
 print(f"[Embedder] Loading model '{EMBEDDING_MODEL}'... (this may take a moment)")
 _model = SentenceTransformer(EMBEDDING_MODEL)

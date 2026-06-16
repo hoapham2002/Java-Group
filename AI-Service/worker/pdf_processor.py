@@ -2,7 +2,7 @@ import io
 from typing import List
 import PyPDF2
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from config import CHUNK_SIZE, CHUNK_OVERLAP
+from core.config import CHUNK_SIZE, CHUNK_OVERLAP
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:

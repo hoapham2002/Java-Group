@@ -1,14 +1,14 @@
 import json
 import time
 import redis
-from config import (
+from core.config import (
     REDIS_HOST, REDIS_PORT,
     STREAM_KEY, CONSUMER_GROUP, CONSUMER_NAME,
 )
-from minio_client import download_pdf_bytes
-from pdf_processor import process_pdf
-from embedder import embed_chunks
-from db_writer import save_chunks, update_document_status
+from worker.minio_client import download_pdf_bytes
+from worker.pdf_processor import process_pdf
+from core.embedder import embed_chunks
+from core.database import save_chunks, update_document_status
 
 
 def connect_redis() -> redis.Redis:
