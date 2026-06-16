@@ -35,6 +35,10 @@ public class ChatSession {
     @JoinColumn(name = "session_account_id", referencedColumnName = "account_id")
     private Account account;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_doc_id", referencedColumnName = "doc_id")
+    private Document document;
+
     @Column(name = "session_deleted_by")
     private Integer sessionDeletedBy;
 

@@ -63,4 +63,16 @@ public class MinioService {
         log.info("File uploaded to MinIO: {}/{}", bucketName, objectName);
         return bucketName + "/" + objectName;
     }
+
+    public String getPresignedUrl(String objectName) throws Exception {
+        String bucketName = minioProperties.getBucket().getName();
+        return minioClient.getPresignedObjectUrl(
+                io.minio.GetPresignedObjectUrlArgs.builder()
+                        .method(io.minio.http.Method.GET)
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .expiry(60 * 60 * 2) // 2 hours expiry
+                        .build()
+        );
+    }
 }

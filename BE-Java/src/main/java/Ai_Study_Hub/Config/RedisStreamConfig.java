@@ -28,7 +28,9 @@ public class RedisStreamConfig {
             redisTemplate.opsForStream().createGroup(STREAM_KEY, CONSUMER_GROUP);
             log.info("Successfully created Consumer Group '{}'", CONSUMER_GROUP);
         } catch (org.springframework.data.redis.RedisSystemException e) {
-            if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            String causeMsg = e.getCause() != null && e.getCause().getMessage() != null ? e.getCause().getMessage() : "";
+            if (msg.contains("BUSYGROUP") || causeMsg.contains("BUSYGROUP")) {
                 log.info("Consumer Group '{}' already exists. Skipping creation.", CONSUMER_GROUP);
             } else {
                 log.warn("RedisSystemException during Stream/Group initialization: {}", e.getMessage());
