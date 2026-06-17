@@ -13,60 +13,33 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/documents")
+@RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentService documentService;
 
-    @PostMapping("/upload")
-    public ResponseEntity<ApiResponse<UploadResponse>> uploadDocument(@ModelAttribute DocumentUploadRequest request) {
-        try {
-            UploadResponse response = documentService.uploadDocument(request);
-            return ResponseEntity.ok(ApiResponse.success("Upload successful", response));
-        } catch (IllegalArgumentException e) {
-            log.error("Validation error during file upload: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
-        } catch (Exception e) {
-            log.error("Internal error during file upload", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, "Internal Server Error: " + e.getMessage()));
-        }
+    @PostMapping
+    public ResponseEntity<ApiResponse<UploadResponse>> uploadDocument(@ModelAttribute DocumentUploadRequest request) throws Exception {
+        UploadResponse response = documentService.uploadDocument(request);
+        return ResponseEntity.ok(ApiResponse.success("Upload successful", response));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<DocumentDto>>> getAllDocuments() {
-        try {
-            List<DocumentDto> documents = documentService.getAllDocuments();
-            return ResponseEntity.ok(ApiResponse.success("Success", documents));
-        } catch (Exception e) {
-            log.error("Error fetching documents", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, "Error fetching documents"));
-        }
+        List<DocumentDto> documents = documentService.getAllDocuments();
+        return ResponseEntity.ok(ApiResponse.success("Success", documents));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteDocument(@PathVariable Integer id) {
-        try {
-            documentService.deleteDocument(id);
-            return ResponseEntity.ok(ApiResponse.success("Document deleted successfully", null));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error deleting document", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, "Error deleting document"));
-        }
+        documentService.deleteDocument(id);
+        return ResponseEntity.ok(ApiResponse.success("Document deleted successfully", null));
     }
 
-    @GetMapping("/{id}/view")
-    public ResponseEntity<ApiResponse<String>> viewDocument(@PathVariable Integer id) {
-        try {
-            String url = documentService.getDocumentViewUrl(id);
-            return ResponseEntity.ok(ApiResponse.success("Success", url));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error getting view URL", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, "Error getting view URL"));
-        }
+    @GetMapping("/{id}/url")
+    public ResponseEntity<ApiResponse<String>> viewDocument(@PathVariable Integer id) throws Exception {
+        String url = documentService.getDocumentViewUrl(id);
+        return ResponseEntity.ok(ApiResponse.success("Success", url));
     }
 }

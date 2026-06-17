@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -20,27 +20,13 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(@RequestBody RegisterRequest request) {
-        try {
-            AuthResponse response = authService.register(request);
-            return ResponseEntity.ok(ApiResponse.success("Đăng ký thành công", response));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
-        } catch (Exception e) {
-            log.error("Register error", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, "Lỗi hệ thống: " + e.getMessage()));
-        }
+        AuthResponse response = authService.register(request);
+        return ResponseEntity.ok(ApiResponse.success("Đăng ký thành công", response));
     }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, e.getMessage()));
-        } catch (Exception e) {
-            log.error("Login error: {}", e.getMessage());
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "User ID hoặc mật khẩu không đúng."));
-        }
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
     }
 }

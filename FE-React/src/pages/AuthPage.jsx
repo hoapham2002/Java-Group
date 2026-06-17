@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { BookOpen, Mail, Lock, User, AlertCircle, Info, Loader } from 'lucide-react';
-import { loginApi, registerApi } from './api';
+import { loginApi, registerApi } from '../services/api';
 import './AuthPage.css';
+import { useAuth } from '../contexts/AuthContext';
 
-function AuthPage({ onLoginSuccess }) {
+function AuthPage() {
+  const { login } = useAuth();
   const [tab, setTab] = useState('login'); // 'login' | 'register'
 
   // Login state
@@ -75,7 +77,7 @@ function AuthPage({ onLoginSuccess }) {
         localStorage.setItem('accountName', accountName);
         localStorage.setItem('email', email);
         localStorage.setItem('role', role);
-        onLoginSuccess({ token, accountName, email, role });
+        login(res.data.data);
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.message || 'Đăng ký thất bại, vui lòng thử lại.');

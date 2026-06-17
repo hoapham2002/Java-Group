@@ -7,6 +7,7 @@ import Ai_Study_Hub.Domain.dto.LoginRequest;
 import Ai_Study_Hub.Domain.dto.RegisterRequest;
 import Ai_Study_Hub.Domain.enums.UserRole;
 import Ai_Study_Hub.Repository.AccountRepository;
+import Ai_Study_Hub.Repository.UserProfileRepository;
 import Ai_Study_Hub.Util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 public class AuthService {
 
     private final AccountRepository accountRepository;
+    private final UserProfileRepository userProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
@@ -53,6 +55,9 @@ public class AuthService {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
+        // Lưu Account trước để tạo ID trong database
+        account = accountRepository.save(account);
+
         // Build UserProfile (liên kết 1-1)
         UserProfile profile = UserProfile.builder()
                 .firstName("")
@@ -60,9 +65,8 @@ public class AuthService {
                 .account(account)
                 .build();
 
-        // Lưu bằng cascade thông qua account có orphanRemoval
-        account.setUserProfile(profile);
-        accountRepository.save(account);
+        // Lưu profile tường minh thông qua Repository thay vì phụ thuộc cascade
+        userProfileRepository.save(profile);
 
         log.info("Registered new account: {} ({})", accountName, request.getEmail());
 

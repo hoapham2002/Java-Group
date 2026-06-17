@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.Authentication;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,9 +47,10 @@ public class DocumentService {
         }
 
         // 2. Fetch Account and Subject
-        // Hardcode Account ID = 1 for now as per plan
-        Account account = accountRepository.findById(1)
-                .orElseThrow(() -> new RuntimeException("Default account not found"));
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String accountName = auth.getName();
+        Account account = accountRepository.findByAccountName(accountName)
+                .orElseThrow(() -> new RuntimeException("Current account not found"));
                 
         Subject subject = subjectRepository.findById(request.getSubjectId())
                 .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
@@ -85,10 +88,14 @@ public class DocumentService {
     }
 
     public List<DocumentDto> getAllDocuments() {
-        // Here we could filter by account ID (e.g., accountId = 1) and isDelete = false
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String accountName = auth.getName();
+        Account account = accountRepository.findByAccountName(accountName)
+                .orElseThrow(() -> new RuntimeException("Current account not found"));
+
         List<Document> documents = documentRepository.findAll()
                 .stream()
-                .filter(doc -> !doc.getIsDelete())
+                .filter(doc -> !doc.getIsDelete() && doc.getAccount().getAccountID() == account.getAccountID())
                 .collect(Collectors.toList());
 
         return documents.stream().map(doc -> DocumentDto.builder()
@@ -111,6 +118,11 @@ public class DocumentService {
         Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
         
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+            throw new IllegalArgumentException("You don't have permission to delete this document");
+        }
+        
         document.setIsDelete(true);
         document.setDocDeletedAt(LocalDateTime.now());
         documentRepository.save(document);
@@ -121,6 +133,11 @@ public class DocumentService {
         Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
         
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+            throw new IllegalArgumentException("You don't have permission to view this document");
+        }
+
         if (document.getIsDelete()) {
             throw new IllegalArgumentException("Document has been deleted");
         }

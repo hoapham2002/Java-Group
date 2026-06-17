@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:9090/api',
+  baseURL: 'http://localhost:9090/api/v1',
 });
 
 // Interceptor: tự động gắn JWT token vào mọi request
@@ -31,11 +31,11 @@ export const registerApi = (data) => api.post('/auth/register', data);
 
 // ===== DOCUMENTS =====
 export const getDocuments = () => api.get('/documents');
-export const uploadDocument = (formData) => api.post('/documents/upload', formData, {
+export const uploadDocument = (formData) => api.post('/documents', formData, {
   headers: { 'Content-Type': 'multipart/form-data' },
 });
 export const deleteDocument = (id) => api.delete(`/documents/${id}`);
-export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/view`);
+export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/url`);
 
 // ===== SUBJECTS =====
 export const getSubjects = () => api.get('/subjects');

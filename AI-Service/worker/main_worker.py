@@ -1,6 +1,13 @@
 import json
 import time
 import redis
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+)
+logger = logging.getLogger("Worker")
 from core.config import (
     REDIS_HOST, REDIS_PORT,
     STREAM_KEY, CONSUMER_GROUP, CONSUMER_NAME,
@@ -17,10 +24,10 @@ def connect_redis() -> redis.Redis:
     
     try:
         r.xgroup_create(STREAM_KEY, CONSUMER_GROUP, id="0", mkstream=True)
-        print(f"[Redis] Created Consumer Group '{CONSUMER_GROUP}' on stream '{STREAM_KEY}'.")
+        logger.info(f"Created Consumer Group '{CONSUMER_GROUP}' on stream '{STREAM_KEY}'.")
     except redis.exceptions.ResponseError as e:
         if "BUSYGROUP" in str(e):
-            print(f"[Redis] Consumer Group '{CONSUMER_GROUP}' already exists. OK.")
+            logger.info(f"Consumer Group '{CONSUMER_GROUP}' already exists. OK.")
         else:
             raise
     
@@ -39,9 +46,7 @@ def process_message(message_id: str, payload: dict):
     minio_url = payload["minioUrl"]
     file_name = payload["fileName"]
     
-    print(f"\n{'='*60}")
-    print(f"[Worker] Processing doc_id={doc_id} | file='{file_name}'")
-    print(f"{'='*60}")
+    logger.info(f"Processing doc_id={doc_id} | file='{file_name}'")
     
     # 1. Cập nhật trạng thái → processing
     update_document_status(doc_id, "processing")
@@ -61,14 +66,14 @@ def process_message(message_id: str, payload: dict):
     # 6. Cập nhật trạng thái → completed
     update_document_status(doc_id, "completed")
     
-    print(f"[Worker] ✅ Successfully processed doc_id={doc_id}. {len(chunks)} chunks saved.")
+    logger.info(f"✅ Successfully processed doc_id={doc_id}. {len(chunks)} chunks saved.")
 
 
 def run():
     """Vòng lặp chính của Worker: đọc và xử lý message từ Redis Stream."""
-    print("[Worker] Starting AI Worker...")
+    logger.info("Starting AI Worker...")
     r = connect_redis()
-    print(f"[Worker] Listening on stream '{STREAM_KEY}' as '{CONSUMER_NAME}'...")
+    logger.info(f"Listening on stream '{STREAM_KEY}' as '{CONSUMER_NAME}'...")
     
     while True:
         try:
@@ -84,7 +89,7 @@ def run():
             
             if not messages:
                 # Hết timeout, không có message → tiếp tục vòng lặp
-                print("[Worker] No new messages. Waiting...")
+                # logger.debug("No new messages. Waiting...")
                 continue
             
             # messages có dạng: [(stream_key, [(message_id, {field: value})])]
@@ -98,19 +103,17 @@ def run():
                         
                         # XACK: báo Redis đã xử lý thành công → xóa khỏi PEL
                         r.xack(STREAM_KEY, CONSUMER_GROUP, message_id)
-                        print(f"[Redis] XACK message_id={message_id}")
+                        logger.info(f"XACK message_id={message_id}")
                         
                     except Exception as e:
                         # Không XACK → Redis giữ lại message trong PEL để retry sau
-                        print(f"[Worker] ❌ Error processing message_id={message_id}: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.error(f"❌ Error processing message_id={message_id}: {e}", exc_info=True)
         
         except KeyboardInterrupt:
-            print("\n[Worker] Shutting down gracefully...")
+            logger.info("Shutting down gracefully...")
             break
         except Exception as e:
-            print(f"[Worker] Unexpected error in main loop: {e}. Retrying in 3s...")
+            logger.error(f"Unexpected error in main loop: {e}. Retrying in 3s...")
             time.sleep(3)
 
 

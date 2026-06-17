@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Bot, User, Loader, AlertCircle } from 'lucide-react';
-import { getDocumentViewUrl, getOrCreateChatSession, sendChatMessage } from './api';
+import { ArrowLeft, Send, Bot, User, Loader, AlertCircle, LogOut } from 'lucide-react';
+import { getDocumentViewUrl, getOrCreateChatSession, sendChatMessage } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import './ChatPage.css';
 
-function ChatPage({ user }) {
+function ChatPage() {
+  const { user, logout } = useAuth();
   const { docId } = useParams();
   const navigate = useNavigate();
 
@@ -115,6 +117,10 @@ function ChatPage({ user }) {
           <div className="avatar">
             {user?.accountName?.[0]?.toUpperCase() || 'U'}
           </div>
+          <button className="btn-logout" onClick={logout} title="Đăng xuất">
+            <LogOut />
+            <span>Đăng xuất</span>
+          </button>
         </div>
       </div>
 

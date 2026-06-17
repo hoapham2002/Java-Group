@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/chat")
+@RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
 public class ChatController {
 
@@ -23,14 +23,9 @@ public class ChatController {
     public ResponseEntity<ApiResponse<ChatSessionDto>> getOrCreateSession(
             @RequestParam Integer docId,
             Authentication authentication) {
-        try {
-            String accountName = authentication.getName();
-            ChatSessionDto session = chatService.getOrCreateSession(docId, accountName);
-            return ResponseEntity.ok(ApiResponse.success("Success", session));
-        } catch (Exception e) {
-            log.error("Error getting or creating chat session", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, e.getMessage()));
-        }
+        String accountName = authentication.getName();
+        ChatSessionDto session = chatService.getOrCreateSession(docId, accountName);
+        return ResponseEntity.ok(ApiResponse.success("Success", session));
     }
 
     @PostMapping("/sessions/{sessionId}/messages")
@@ -38,13 +33,8 @@ public class ChatController {
             @PathVariable Integer sessionId,
             @RequestBody ChatRequest request,
             Authentication authentication) {
-        try {
-            String accountName = authentication.getName();
-            ChatMessageDto response = chatService.sendMessage(sessionId, request, accountName);
-            return ResponseEntity.ok(ApiResponse.success("Success", response));
-        } catch (Exception e) {
-            log.error("Error sending message", e);
-            return ResponseEntity.internalServerError().body(ApiResponse.error(500, e.getMessage()));
-        }
+        String accountName = authentication.getName();
+        ChatMessageDto response = chatService.sendMessage(sessionId, request, accountName);
+        return ResponseEntity.ok(ApiResponse.success("Success", response));
     }
 }

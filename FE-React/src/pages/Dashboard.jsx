@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Upload, FileText, Trash2, Search, BookOpen,
   AlertCircle, Files, CheckCircle, Clock, LogOut,
   Share2, FolderOpen
 } from 'lucide-react';
-import { getDocuments, getSubjects, uploadDocument, deleteDocument } from './api';
-import './App.css';
+import { getDocuments, getSubjects, uploadDocument, deleteDocument } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import '../App.css';
 
 const THUMB_COLORS = ['purple', 'green', 'blue', 'orange', 'pink'];
 
@@ -28,9 +29,13 @@ function getGreeting() {
   return 'Chào buổi tối';
 }
 
-function Home({ user, onLogout }) {
+function Dashboard() {
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('mine');
+  const location = useLocation();
+  
+  // Xác định tab hiện tại dựa trên URL
+  const activeTab = location.pathname.includes('/shared') ? 'shared' : 'mine';
   const [documents, setDocuments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -145,7 +150,7 @@ function Home({ user, onLogout }) {
           <div className="avatar" title={user?.email}>
             {user?.accountName?.[0]?.toUpperCase() || 'U'}
           </div>
-          <button className="btn-logout" onClick={onLogout} title="Đăng xuất">
+          <button className="btn-logout" onClick={logout} title="Đăng xuất">
             <LogOut />
             <span>Đăng xuất</span>
           </button>
@@ -190,7 +195,7 @@ function Home({ user, onLogout }) {
           <div className="page-tabs">
             <button
               className={`page-tab${activeTab === 'mine' ? ' active' : ''}`}
-              onClick={() => setActiveTab('mine')}
+              onClick={() => navigate('/documents')}
             >
               <FolderOpen />
               Của tôi
@@ -198,7 +203,7 @@ function Home({ user, onLogout }) {
             </button>
             <button
               className={`page-tab${activeTab === 'shared' ? ' active' : ''}`}
-              onClick={() => setActiveTab('shared')}
+              onClick={() => navigate('/documents/shared')}
             >
               <Share2 />
               Được chia sẻ
@@ -321,4 +326,4 @@ function Home({ user, onLogout }) {
   );
 }
 
-export default Home;
+export default Dashboard;
