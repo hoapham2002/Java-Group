@@ -31,11 +31,26 @@ export const registerApi = (data) => api.post('/auth/register', data);
 
 // ===== DOCUMENTS =====
 export const getDocuments = () => api.get('/documents');
-export const uploadDocument = (formData) => api.post('/documents', formData, {
-  headers: { 'Content-Type': 'multipart/form-data' },
-});
+export const createSubject = (name) => api.post('/subjects', { name });
+export const renameSubject = (id, name) => api.put(`/subjects/${id}/rename`, { name });
+export const deleteSubject = (id) => api.delete(`/subjects/${id}`);
+
+export const uploadDocument = (file, subjectId) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (subjectId) {
+    formData.append('subjectId', subjectId);
+  }
+  return api.post('/documents', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
 export const deleteDocument = (id) => api.delete(`/documents/${id}`);
 export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/url`);
+export const renameDocument = (id, newName) => api.put(`/documents/${id}/rename`, { newName });
+export const moveDocument = (id, subjectId) => api.put(`/documents/${id}/move`, { subjectId });
+export const shareDocument = (data) => api.post('/documents/share', data);
+export const getSharedDocuments = () => api.get('/documents/shared-with-me');
 
 // ===== SUBJECTS =====
 export const getSubjects = () => api.get('/subjects');

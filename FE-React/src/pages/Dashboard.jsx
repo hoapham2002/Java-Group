@@ -3,9 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Upload, FileText, Trash2, Search, BookOpen,
   AlertCircle, Files, CheckCircle, Clock, LogOut,
-  Share2, FolderOpen
+  Share2, FolderOpen, X, Edit2, Check, Folder,
+  ArrowLeft, MoveRight, Plus
 } from 'lucide-react';
-import { getDocuments, getSubjects, uploadDocument, deleteDocument } from '../services/api';
+import { 
+  getDocuments, getSubjects, uploadDocument, deleteDocument, 
+  shareDocument, getSharedDocuments, renameDocument, moveDocument,
+  createSubject, renameSubject, deleteSubject 
+} from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import '../App.css';
 
@@ -34,15 +39,35 @@ function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Xác định tab hiện tại dựa trên URL
   const activeTab = location.pathname.includes('/shared') ? 'shared' : 'mine';
   const [documents, setDocuments] = useState([]);
+  const [sharedDocumentsData, setSharedDocumentsData] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  
+  const [currentSubjectId, setCurrentSubjectId] = useState(null); // null = Root
+  
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef(null);
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareDocId, setShareDocId] = useState(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareMessage, setShareMessage] = useState('');
+
+  const [editingDocId, setEditingDocId] = useState(null);
+  const [editingDocName, setEditingDocName] = useState('');
+
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [moveDocId, setMoveDocId] = useState(null);
+
+  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  const [editingSubjId, setEditingSubjId] = useState(null);
+  const [editingSubjName, setEditingSubjName] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -52,15 +77,14 @@ function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [docsRes, subsRes] = await Promise.all([
+      const [docsRes, subsRes, sharedDocsRes] = await Promise.all([
         getDocuments(),
-        getSubjects()
+        getSubjects(),
+        getSharedDocuments()
       ]);
       setDocuments(docsRes.data.data || []);
       setSubjects(subsRes.data.data || []);
-      if (subsRes.data.data && subsRes.data.data.length > 0 && !selectedSubject) {
-        setSelectedSubject(subsRes.data.data[0].subjId.toString());
-      }
+      setSharedDocumentsData(sharedDocsRes.data.data || []);
     } catch (error) {
       console.error('Error fetching data', error);
     }
@@ -73,17 +97,11 @@ function Dashboard() {
       setUploadError('Vui lòng chọn file PDF.');
       return;
     }
-    if (!selectedSubject) {
-      setUploadError('Vui lòng chọn môn học.');
-      return;
-    }
     setUploadError('');
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('subjectId', selectedSubject);
     try {
-      await uploadDocument(formData);
+      console.log('Uploading file:', file.name, 'to subjectId:', currentSubjectId);
+      await uploadDocument(file, currentSubjectId);
       fetchData();
     } catch (error) {
       setUploadError('Lỗi khi tải file lên: ' + (error.response?.data?.message || error.message));
@@ -105,6 +123,77 @@ function Dashboard() {
     }
   };
 
+  const handleRenameClick = (e, doc) => {
+    e.stopPropagation();
+    setEditingDocId(doc.docId);
+    setEditingDocName(doc.docOriginalName);
+  };
+
+  const handleRenameSubmit = async (e, docId) => {
+    e.stopPropagation();
+    if (!editingDocName.trim()) {
+      setEditingDocId(null);
+      return;
+    }
+    try {
+      await renameDocument(docId, editingDocName);
+      setEditingDocId(null);
+      fetchData();
+    } catch (error) {
+      console.error('Lỗi khi đổi tên:', error);
+      alert('Không thể đổi tên tài liệu!');
+    }
+  };
+
+  const handleRenameKeyDown = (e, docId) => {
+    if (e.key === 'Enter') handleRenameSubmit(e, docId);
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      setEditingDocId(null);
+    }
+  };
+
+  const handleMoveClick = (e, docId) => {
+    e.stopPropagation();
+    setMoveDocId(docId);
+    setIsMoveModalOpen(true);
+  };
+
+  const handleMoveSubmit = async (targetSubjectId) => {
+    try {
+      await moveDocument(moveDocId, targetSubjectId);
+      setIsMoveModalOpen(false);
+      setMoveDocId(null);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi khi di chuyển tài liệu');
+    }
+  };
+
+  const handleShareClick = (e, docId) => {
+    e.stopPropagation();
+    setShareDocId(docId);
+    setShareEmail('');
+    setShareMessage('');
+    setIsShareModalOpen(true);
+  };
+
+  const handleShareSubmit = async () => {
+    if (!shareEmail) return;
+    setIsSharing(true);
+    setShareMessage('');
+    try {
+      await shareDocument({ docId: shareDocId, email: shareEmail });
+      setShareMessage('Chia sẻ thành công!');
+      setTimeout(() => setIsShareModalOpen(false), 2000);
+      fetchData();
+    } catch (error) {
+      setShareMessage('Lỗi: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const handleDocClick = (doc) => {
     if (doc.docStatus === 'completed') {
       navigate(`/chat/${doc.docId}`);
@@ -113,10 +202,71 @@ function Dashboard() {
     }
   };
 
-  const myDocs = documents.filter(d =>
+  // SUBJECT HANDLERS
+  const handleCreateSubject = async () => {
+    if (!newFolderName.trim()) return;
+    try {
+      await createSubject(newFolderName);
+      setNewFolderName('');
+      setIsCreateFolderModalOpen(false);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi tạo thư mục');
+    }
+  };
+
+  const handleDeleteSubject = async (e, subjId) => {
+    e.stopPropagation();
+    if (!window.confirm('CẢNH BÁO: Bạn có chắc chắn muốn xóa thư mục này? Toàn bộ tài liệu bên trong thư mục cũng sẽ bị xóa!')) return;
+    try {
+      await deleteSubject(subjId);
+      if (currentSubjectId === subjId) setCurrentSubjectId(null);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi xóa thư mục');
+    }
+  };
+
+  const handleRenameSubjClick = (e, sub) => {
+    e.stopPropagation();
+    setEditingSubjId(sub.subjId);
+    setEditingSubjName(sub.subjName);
+  };
+
+  const handleRenameSubjSubmit = async (e, subjId) => {
+    e.stopPropagation();
+    if (!editingSubjName.trim()) {
+      setEditingSubjId(null);
+      return;
+    }
+    try {
+      await renameSubject(subjId, editingSubjName);
+      setEditingSubjId(null);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi đổi tên thư mục');
+    }
+  };
+
+  const handleRenameSubjKeyDown = (e, subjId) => {
+    if (e.key === 'Enter') handleRenameSubjSubmit(e, subjId);
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      setEditingSubjId(null);
+    }
+  };
+
+  // Filter documents based on tab, subject, and search
+  const myDocs = documents.filter(d => {
+    const matchSearch = !searchQuery || d.docOriginalName?.toLowerCase().includes(searchQuery.toLowerCase());
+    // Nếu đang tìm kiếm, quét toàn bộ tài liệu bất kể folder. Ngược lại thì lọc theo folder hiện tại.
+    const matchSubject = searchQuery ? true : (currentSubjectId === null ? !d.subject : d.subject?.subjId === currentSubjectId);
+    return matchSearch && matchSubject;
+  });
+
+  const sharedDocs = sharedDocumentsData.filter(d =>
     !searchQuery || d.docOriginalName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  const sharedDocs = [];
 
   const displayedDocs = activeTab === 'mine' ? myDocs : sharedDocs;
   const completedCount = documents.filter(d => d.docStatus === 'completed').length;
@@ -195,11 +345,11 @@ function Dashboard() {
           <div className="page-tabs">
             <button
               className={`page-tab${activeTab === 'mine' ? ' active' : ''}`}
-              onClick={() => navigate('/documents')}
+              onClick={() => { navigate('/documents'); setCurrentSubjectId(null); }}
             >
               <FolderOpen />
               Của tôi
-              <span className="tab-badge">{myDocs.length}</span>
+              <span className="tab-badge">{documents.length}</span>
             </button>
             <button
               className={`page-tab${activeTab === 'shared' ? ' active' : ''}`}
@@ -213,18 +363,6 @@ function Dashboard() {
 
           {activeTab === 'mine' && (
             <div className="upload-panel">
-              <div className="upload-panel-field">
-                <label>Môn học</label>
-                <select
-                  className="select-subject"
-                  value={selectedSubject}
-                  onChange={(e) => setSelectedSubject(e.target.value)}
-                >
-                  {subjects.map(sub => (
-                    <option key={sub.subjId} value={sub.subjId}>{sub.subjName}</option>
-                  ))}
-                </select>
-              </div>
               <input
                 type="file"
                 accept=".pdf"
@@ -241,7 +379,7 @@ function Dashboard() {
                 {isUploading ? (
                   <><div className="spinner" /><span>Đang tải...</span></>
                 ) : (
-                  <><Upload /><span>Tải lên PDF</span></>
+                  <><Upload /><span>Tải lên PDF vào {currentSubjectId ? 'Thư mục' : 'Root'}</span></>
                 )}
               </button>
             </div>
@@ -255,8 +393,76 @@ function Dashboard() {
           </div>
         )}
 
+        {/* ===== FOLDER LIST ===== */}
+        {activeTab === 'mine' && (
+          <div className="folders-section">
+            <div className="folders-header">
+              <h3>
+                {currentSubjectId === null ? 'Thư mục gốc (Root)' : (
+                  <span className="breadcrumb">
+                    <span className="breadcrumb-link" onClick={() => setCurrentSubjectId(null)}>Root</span>
+                    <span className="breadcrumb-separator">/</span>
+                    {subjects.find(s => s.subjId === currentSubjectId)?.subjName}
+                  </span>
+                )}
+              </h3>
+              {currentSubjectId === null && (
+                <button className="btn-create-folder" onClick={() => setIsCreateFolderModalOpen(true)}>
+                  <Plus size={16} /> Thư mục mới
+                </button>
+              )}
+            </div>
+            
+            {currentSubjectId === null && (
+              <div className="folder-grid">
+                {subjects.map(sub => (
+                  <div key={sub.subjId} className="folder-card" onClick={() => setCurrentSubjectId(sub.subjId)}>
+                    <div className="folder-icon"><Folder fill="#facc15" color="#ca8a04" /></div>
+                    <div className="folder-info">
+                      {editingSubjId === sub.subjId ? (
+                        <div className="rename-container" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            className="rename-input"
+                            value={editingSubjName}
+                            onChange={(e) => setEditingSubjName(e.target.value)}
+                            onKeyDown={(e) => handleRenameSubjKeyDown(e, sub.subjId)}
+                            autoFocus
+                          />
+                          <button 
+                            className="btn-rename-submit"
+                            onClick={(e) => handleRenameSubjSubmit(e, sub.subjId)}
+                            title="Lưu tên"
+                          >
+                            <Check size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="folder-name" title={sub.subjName}>{sub.subjName}</div>
+                      )}
+                    </div>
+                    <div className="folder-actions" onClick={e => e.stopPropagation()}>
+                      <button className="btn-icon" title="Đổi tên" onClick={(e) => handleRenameSubjClick(e, sub)}>
+                        <Edit2 />
+                      </button>
+                      <button className="btn-icon delete" title="Xóa thư mục" onClick={(e) => handleDeleteSubject(e, sub.subjId)}>
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {currentSubjectId !== null && (
+              <button className="btn-back-root" onClick={() => setCurrentSubjectId(null)}>
+                <ArrowLeft size={16} /> Quay lại Root
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ===== DOCUMENT GRID ===== */}
-        <div className="doc-grid">
+        <div className="doc-grid" style={{ marginTop: '20px' }}>
           {displayedDocs.map((doc, idx) => {
             const colorKey = THUMB_COLORS[idx % THUMB_COLORS.length];
             const statusInfo = getStatusInfo(doc.docStatus);
@@ -271,12 +477,34 @@ function Dashboard() {
                   <div className="doc-type-badge">PDF</div>
                 </div>
                 <div className="doc-card-body">
-                  <div className="doc-card-name" title={doc.docOriginalName}>
-                    {doc.docOriginalName}
-                  </div>
-                  <div className="doc-subject-tag">
-                    {doc.subject?.subjName || 'Chưa phân loại'}
-                  </div>
+                  {editingDocId === doc.docId ? (
+                    <div className="rename-container" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        className="rename-input"
+                        value={editingDocName}
+                        onChange={(e) => setEditingDocName(e.target.value)}
+                        onKeyDown={(e) => handleRenameKeyDown(e, doc.docId)}
+                        autoFocus
+                      />
+                      <button 
+                        className="btn-rename-submit"
+                        onClick={(e) => handleRenameSubmit(e, doc.docId)}
+                        title="Lưu tên"
+                      >
+                        <Check size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="doc-card-name" title={doc.docOriginalName}>
+                      {doc.docOriginalName}
+                    </div>
+                  )}
+                  {activeTab === 'shared' ? (
+                    <div className="doc-subject-tag">Được chia sẻ</div>
+                  ) : (
+                    <div className="doc-subject-tag">{doc.subject?.subjName || 'Thư mục gốc'}</div>
+                  )}
                   <div className="doc-card-footer">
                     <div className="doc-status">
                       <span className={`status-dot ${statusInfo.dotClass}`} />
@@ -285,6 +513,31 @@ function Dashboard() {
                       </span>
                     </div>
                     <div className="doc-actions">
+                      {activeTab === 'mine' && (
+                        <>
+                          <button
+                            className="btn-icon"
+                            title="Di chuyển"
+                            onClick={(e) => handleMoveClick(e, doc.docId)}
+                          >
+                            <MoveRight />
+                          </button>
+                          <button
+                            className="btn-icon"
+                            title="Đổi tên tài liệu"
+                            onClick={(e) => handleRenameClick(e, doc)}
+                          >
+                            <Edit2 />
+                          </button>
+                          <button
+                            className="btn-icon"
+                            title="Chia sẻ tài liệu"
+                            onClick={(e) => handleShareClick(e, doc.docId)}
+                          >
+                            <Share2 />
+                          </button>
+                        </>
+                      )}
                       <button
                         className="btn-icon"
                         title="Xóa tài liệu"
@@ -307,10 +560,7 @@ function Dashboard() {
               {activeTab === 'mine' ? (
                 <>
                   <h3>Chưa có tài liệu nào</h3>
-                  <p>Tải lên file PDF đầu tiên của bạn để bắt đầu học tập cùng AI</p>
-                  <button className="btn-empty-upload" onClick={() => fileInputRef.current?.click()}>
-                    Tải lên ngay
-                  </button>
+                  <p>Thư mục này đang trống. Hãy tải lên file PDF để bắt đầu.</p>
                 </>
               ) : (
                 <>
@@ -321,6 +571,111 @@ function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* ===== CREATE FOLDER MODAL ===== */}
+        {isCreateFolderModalOpen && (
+          <div className="share-modal-overlay" onClick={() => setIsCreateFolderModalOpen(false)}>
+            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+              <div className="share-modal-header">
+                <h3>Tạo thư mục mới</h3>
+                <button className="share-modal-close" onClick={() => setIsCreateFolderModalOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="share-modal-body">
+                <div className="share-input-group">
+                  <input
+                    type="text"
+                    className="share-email-input"
+                    placeholder="Tên thư mục..."
+                    value={newFolderName}
+                    onChange={e => setNewFolderName(e.target.value)}
+                    onKeyDown={e => { if(e.key === 'Enter') handleCreateSubject(); }}
+                    autoFocus
+                  />
+                  <button 
+                    className="btn-share-send" 
+                    onClick={handleCreateSubject} 
+                    disabled={!newFolderName}
+                  >
+                    Tạo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== MOVE DOCUMENT MODAL ===== */}
+        {isMoveModalOpen && (
+          <div className="share-modal-overlay" onClick={() => setIsMoveModalOpen(false)}>
+            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+              <div className="share-modal-header">
+                <h3>Di chuyển tài liệu</h3>
+                <button className="share-modal-close" onClick={() => setIsMoveModalOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="share-modal-body">
+                <div className="move-options">
+                  <div 
+                    className="move-option" 
+                    onClick={() => handleMoveSubmit(null)}
+                  >
+                    <FolderOpen size={18} /> Thư mục gốc (Root)
+                  </div>
+                  {subjects.map(sub => (
+                    <div 
+                      key={sub.subjId} 
+                      className="move-option"
+                      onClick={() => handleMoveSubmit(sub.subjId)}
+                    >
+                      <Folder fill="#facc15" color="#ca8a04" size={18} /> {sub.subjName}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== SHARE MODAL ===== */}
+        {isShareModalOpen && (
+          <div className="share-modal-overlay" onClick={() => setIsShareModalOpen(false)}>
+            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+              <div className="share-modal-header">
+                <h3>Chia sẻ "{documents.find(d => d.docId === shareDocId)?.docOriginalName || 'Tài liệu'}"</h3>
+                <button className="share-modal-close" onClick={() => setIsShareModalOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="share-modal-body">
+                <div className="share-input-group">
+                  <input
+                    type="email"
+                    className="share-email-input"
+                    placeholder="Thêm người bằng email..."
+                    value={shareEmail}
+                    onChange={e => setShareEmail(e.target.value)}
+                    onKeyDown={e => { if(e.key === 'Enter') handleShareSubmit(); }}
+                  />
+                  <button 
+                    className="btn-share-send" 
+                    onClick={handleShareSubmit} 
+                    disabled={isSharing || !shareEmail}
+                  >
+                    {isSharing ? 'Đang gửi...' : 'Gửi'}
+                  </button>
+                </div>
+                {shareMessage && (
+                  <div style={{ marginTop: '12px', fontSize: '14px', color: shareMessage.includes('Lỗi') ? '#ef4444' : '#10b981' }}>
+                    {shareMessage}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
