@@ -34,12 +34,7 @@ function AuthPage() {
     setLoading(true);
     try {
       const res = await loginApi({ accountName: loginForm.accountName, password: loginForm.password });
-      const { token, accountName, email, role } = res.data.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('accountName', accountName);
-      localStorage.setItem('email', email);
-      localStorage.setItem('role', role);
-      onLoginSuccess({ token, accountName, email, role });
+      login(res.data.data);
     } catch (err) {
       setError(err.response?.data?.message || 'User ID hoặc mật khẩu không đúng.');
     } finally {
@@ -73,10 +68,6 @@ function AuthPage() {
       setSuccessMsg(`Đăng ký thành công! User ID của bạn là: ${accountName}`);
       // Auto login after 1.5s
       setTimeout(() => {
-        localStorage.setItem('token', token);
-        localStorage.setItem('accountName', accountName);
-        localStorage.setItem('email', email);
-        localStorage.setItem('role', role);
         login(res.data.data);
       }, 1500);
     } catch (err) {
