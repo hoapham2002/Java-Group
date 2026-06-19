@@ -14,6 +14,7 @@ import Ai_Study_Hub.Repository.AccountRepository;
 import Ai_Study_Hub.Repository.ChatMessageRepository;
 import Ai_Study_Hub.Repository.ChatSessionRepository;
 import Ai_Study_Hub.Repository.DocumentRepository;
+import Ai_Study_Hub.Repository.DocumentShareRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final DocumentRepository documentRepository;
     private final AccountRepository accountRepository;
+    private final DocumentShareRepository documentShareRepository;
 
     @Transactional
     public ChatSessionDto getOrCreateSession(Integer docId, String accountName) {
@@ -42,6 +44,16 @@ public class ChatService {
 
         Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+
+        boolean isOwner = document.getAccount().getAccountID() == account.getAccountID();
+        if (!isOwner) {
+            boolean isShared = documentShareRepository
+                    .existsByDocument_DocIdAndSharedAccount_AccountIDAndIsActiveTrueAndExpiresAtAfter(
+                            docId, account.getAccountID(), LocalDateTime.now());
+            if (!isShared) {
+                throw new IllegalArgumentException("You don't have permission to chat with this document");
+            }
+        }
 
         ChatSession session = chatSessionRepository.findTopByDocument_DocIdAndAccount_AccountIDOrderBySessionCreatedAtDesc(docId, account.getAccountID())
                 .orElseGet(() -> {

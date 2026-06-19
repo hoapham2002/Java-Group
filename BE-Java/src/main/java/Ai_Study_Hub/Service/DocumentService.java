@@ -11,6 +11,7 @@ import Ai_Study_Hub.Domain.dto.DocumentDto;
 import Ai_Study_Hub.Domain.dto.SubjectDto;
 import Ai_Study_Hub.Repository.AccountRepository;
 import Ai_Study_Hub.Repository.DocumentRepository;
+import Ai_Study_Hub.Repository.DocumentShareRepository;
 import Ai_Study_Hub.Repository.SubjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class DocumentService {
     private final MinioService minioService;
     private final RedisProducerService redisProducerService;
     private final DocumentRepository documentRepository;
+    private final DocumentShareRepository documentShareRepository;
     private final AccountRepository accountRepository;
     private final SubjectRepository subjectRepository;
 
@@ -52,8 +54,11 @@ public class DocumentService {
         Account account = accountRepository.findByAccountName(accountName)
                 .orElseThrow(() -> new RuntimeException("Current account not found"));
                 
-        Subject subject = subjectRepository.findById(request.getSubjectId())
-                .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+        Subject subject = null;
+        if (request.getSubjectId() != null) {
+            subject = subjectRepository.findById(request.getSubjectId())
+                    .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+        }
 
         // 3. Upload to MinIO
         String minioUrl = minioService.uploadFile(request.getFile());
@@ -105,11 +110,11 @@ public class DocumentService {
                 .docFileSize(doc.getDocFileSize())
                 .docStatus(doc.getDocStatus())
                 .docUploadedAt(doc.getDocUploadedAt())
-                .subject(SubjectDto.builder()
+                .subject(doc.getSubject() != null ? SubjectDto.builder()
                         .subjId(doc.getSubject().getSubjId())
                         .subjName(doc.getSubject().getSubjName())
                         .subjCode(doc.getSubject().getSubjCode())
-                        .build())
+                        .build() : null)
                 .build()).collect(Collectors.toList());
     }
 
@@ -134,8 +139,19 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
         
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (!document.getAccount().getAccountName().equals(auth.getName())) {
-            throw new IllegalArgumentException("You don't have permission to view this document");
+        String currentUsername = auth.getName();
+        
+        boolean isOwner = document.getAccount().getAccountName().equals(currentUsername);
+        
+        if (!isOwner) {
+            Account currentAccount = accountRepository.findByAccountName(currentUsername)
+                    .orElseThrow(() -> new RuntimeException("Current account not found"));
+            boolean isShared = documentShareRepository
+                    .existsByDocument_DocIdAndSharedAccount_AccountIDAndIsActiveTrueAndExpiresAtAfter(
+                            docId, currentAccount.getAccountID(), LocalDateTime.now());
+            if (!isShared) {
+                throw new IllegalArgumentException("You don't have permission to view this document");
+            }
         }
 
         if (document.getIsDelete()) {
@@ -150,5 +166,85 @@ public class DocumentService {
         }
 
         return minioService.getPresignedUrl(objectName);
+    }
+
+    @Transactional
+    public DocumentDto renameDocument(Integer docId, String newName) {
+        Document document = documentRepository.findById(docId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+        
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+            throw new IllegalArgumentException("You don't have permission to rename this document");
+        }
+        
+        if (document.getIsDelete()) {
+            throw new IllegalArgumentException("Document has been deleted");
+        }
+
+        if (newName == null || newName.trim().isEmpty()) {
+            throw new IllegalArgumentException("New name cannot be empty");
+        }
+
+        document.setDocOriginalName(newName);
+        document = documentRepository.save(document);
+        log.info("Renamed document ID: {} to {}", docId, newName);
+
+        return DocumentDto.builder()
+                .docId(document.getDocId())
+                .docOriginalName(document.getDocOriginalName())
+                .docStorageUrl(document.getDocStorageUrl())
+                .docFileSize(document.getDocFileSize())
+                .docStatus(document.getDocStatus())
+                .docUploadedAt(document.getDocUploadedAt())
+                .subject(document.getSubject() != null ? SubjectDto.builder()
+                        .subjId(document.getSubject().getSubjId())
+                        .subjName(document.getSubject().getSubjName())
+                        .subjCode(document.getSubject().getSubjCode())
+                        .build() : null)
+                .build();
+    }
+
+    @Transactional
+    public DocumentDto moveDocument(Integer docId, Integer newSubjectId) {
+        Document document = documentRepository.findById(docId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+        
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+            throw new IllegalArgumentException("You don't have permission to move this document");
+        }
+        
+        if (document.getIsDelete()) {
+            throw new IllegalArgumentException("Document has been deleted");
+        }
+
+        Subject subject = null;
+        if (newSubjectId != null) {
+            subject = subjectRepository.findById(newSubjectId)
+                    .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+            // Ensure subject belongs to the user
+            if (subject.getAccount() == null || !subject.getAccount().getAccountName().equals(auth.getName())) {
+                throw new IllegalArgumentException("You don't have permission to move to this subject");
+            }
+        }
+
+        document.setSubject(subject);
+        document = documentRepository.save(document);
+        log.info("Moved document ID: {} to subject ID: {}", docId, newSubjectId);
+
+        return DocumentDto.builder()
+                .docId(document.getDocId())
+                .docOriginalName(document.getDocOriginalName())
+                .docStorageUrl(document.getDocStorageUrl())
+                .docFileSize(document.getDocFileSize())
+                .docStatus(document.getDocStatus())
+                .docUploadedAt(document.getDocUploadedAt())
+                .subject(document.getSubject() != null ? SubjectDto.builder()
+                        .subjId(document.getSubject().getSubjId())
+                        .subjName(document.getSubject().getSubjName())
+                        .subjCode(document.getSubject().getSubjCode())
+                        .build() : null)
+                .build();
     }
 }

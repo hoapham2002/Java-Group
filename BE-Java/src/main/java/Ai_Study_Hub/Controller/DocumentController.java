@@ -3,6 +3,8 @@ package Ai_Study_Hub.Controller;
 import Ai_Study_Hub.Domain.dto.DocumentUploadRequest;
 import Ai_Study_Hub.Domain.dto.UploadResponse;
 import Ai_Study_Hub.Domain.dto.DocumentDto;
+import Ai_Study_Hub.Domain.dto.RenameDocumentRequest;
+import Ai_Study_Hub.Domain.dto.MoveDocumentRequest;
 import Ai_Study_Hub.Service.DocumentService;
 import Ai_Study_Hub.Util.ApiResponse;
 import java.util.List;
@@ -41,5 +43,21 @@ public class DocumentController {
     public ResponseEntity<ApiResponse<String>> viewDocument(@PathVariable Integer id) throws Exception {
         String url = documentService.getDocumentViewUrl(id);
         return ResponseEntity.ok(ApiResponse.success("Success", url));
+    }
+
+    @PutMapping("/{id}/rename")
+    public ResponseEntity<ApiResponse<DocumentDto>> renameDocument(
+            @PathVariable Integer id, 
+            @RequestBody RenameDocumentRequest request) {
+        DocumentDto updatedDoc = documentService.renameDocument(id, request.getNewName());
+        return ResponseEntity.ok(ApiResponse.success("Document renamed successfully", updatedDoc));
+    }
+
+    @PutMapping("/{id}/move")
+    public ResponseEntity<ApiResponse<DocumentDto>> moveDocument(
+            @PathVariable Integer id, 
+            @RequestBody MoveDocumentRequest request) {
+        DocumentDto updatedDoc = documentService.moveDocument(id, request.getSubjectId());
+        return ResponseEntity.ok(ApiResponse.success("Document moved successfully", updatedDoc));
     }
 }
