@@ -33,6 +33,12 @@ public class DocumentController {
         return ResponseEntity.ok(ApiResponse.success("Success", documents));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteDocument(@PathVariable Integer id) {
+        documentService.deleteDocument(id);
+        return ResponseEntity.ok(ApiResponse.success("Document deleted successfully", null));
+    }
+
     @GetMapping("/{id}/url")
     public ResponseEntity<ApiResponse<String>> getDocumentUrl(@PathVariable Integer id) {
         String url = documentService.getDocumentUrl(id);
@@ -55,7 +61,7 @@ public class DocumentController {
         return ResponseEntity.ok(ApiResponse.success("Document moved successfully", updatedDoc));
     }
 
-    @GetMapping("/getfile/{accountID}")
+    @GetMapping("/getFile/{accountID}")
     public ResponseEntity<ApiResponse<List<DocumentDto>>> getFileByAccountId(
             @PathVariable("accountID") Integer accountID) {
         List<DocumentDto> documents = this.documentService.getFilesByAccountId(accountID);

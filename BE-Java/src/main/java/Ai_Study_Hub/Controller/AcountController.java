@@ -31,7 +31,7 @@ public class AcountController {
         this.accountService = accountService;
     }
 
-    @GetMapping("/getuser/{id}")
+    @GetMapping("/getUser/{id}")
     public ResponseEntity<ApiResponse<AccountDTO>> getUserByID(@PathVariable("id") Integer accountID) {
         Optional<AccountDTO> accountDTO = this.accountService.getUserByID(accountID);
 
@@ -45,7 +45,7 @@ public class AcountController {
         }
     }
 
-    @GetMapping("/getalluser")
+    @GetMapping("/getAllUser")
     public ResponseEntity<ApiResponse<ResultPaginationDTO>> getAllUser(
             @Filter Specification<Account> spec,
             Pageable pageable) {
@@ -55,7 +55,7 @@ public class AcountController {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách tài khoản thành công", data));
     }
 
-    @DeleteMapping("/deleteuser/{id}")
+    @DeleteMapping("/deleteUser/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteUserByID(@PathVariable("id") Integer accountID) {
         boolean isDeleted = this.accountService.handleDeleteUser(accountID);
         if (isDeleted) {

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import Ai_Study_Hub.Domain.Account;
 import Ai_Study_Hub.Domain.UserProfile;
+import Ai_Study_Hub.Domain.dto.UpdateProfileRequest;
 import Ai_Study_Hub.Domain.dto.UserProfileDTO;
 import Ai_Study_Hub.Repository.AccountRepository;
 import Ai_Study_Hub.Repository.UserProfileRepository;
@@ -55,5 +56,38 @@ public class UserProfileService {
                     .apiCallCount(0); // Đã xóa bỏ chữ "apiCallCount:" bị thừa
         }
         return Optional.of(builder.build());
+    }
+
+    public UserProfileDTO updateProfile(Integer accountID, UpdateProfileRequest request) {
+        // 1. Cập nhật Account
+        Account account = accountRepository.findById(accountID)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản"));
+
+        if (request.getFirstName() != null) {
+            account.setFirstName(request.getFirstName());
+        }
+        if (request.getLastName() != null) {
+            account.setLastName(request.getLastName());
+        }
+        if (request.getEmail() != null) {
+            account.setEmail(request.getEmail());
+        }
+        accountRepository.save(account);
+
+        // 2. Cập nhật UserProfile nếu có
+        Optional<UserProfile> profileOpt = userProfileRepository.findByAccount_AccountID(accountID);
+        if (profileOpt.isPresent()) {
+            UserProfile profile = profileOpt.get();
+            if (request.getFirstName() != null) {
+                profile.setFirstName(request.getFirstName());
+            }
+            if (request.getLastName() != null) {
+                profile.setLastName(request.getLastName());
+            }
+            userProfileRepository.save(profile);
+        }
+
+        // 3. Trả về DTO mới cập nhật
+        return getUserProfile(accountID).orElseThrow(() -> new RuntimeException("Lỗi cập nhật profile"));
     }
 }

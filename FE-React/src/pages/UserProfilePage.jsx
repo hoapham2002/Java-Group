@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, ArrowLeft, FileText, HardDrive, RefreshCw, Cpu } from 'lucide-react';
-import { getFileByAccountId, getUserProfileApi } from '../services/api';
+import { User, Mail, ArrowLeft, FileText, HardDrive, RefreshCw, Cpu, Edit3, Save } from 'lucide-react';
+import { getFileByAccountId, getUserProfileApi, updateUserProfileApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './UserProfilePage.css';
 
@@ -16,6 +16,11 @@ function UserProfilePage() {
     // State quản lý trạng thái loading
     const [isLoadingProfile, setIsLoadingProfile] = useState(false);
     const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+    // State quản lý Edit Mode
+    const [isEditing, setIsEditing] = useState(false);
+    const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '' });
+    const [isSaving, setIsSaving] = useState(false);
 
     // Hàm gọi các API đồng thời khi có ID tài khoản
     const loadAllData = (accountId) => {
@@ -84,6 +89,11 @@ function UserProfilePage() {
             if (finalDataToSet) {
                 console.log("=== DATA ĐƯỢC SET VÀO STATE ===:", finalDataToSet);
                 setProfileData(finalDataToSet);
+                setEditForm({
+                    firstName: finalDataToSet.firstName || '',
+                    lastName: finalDataToSet.lastName || '',
+                    email: finalDataToSet.email || ''
+                });
             } else {
                 console.warn("Không trích xuất được data. Vui lòng kiểm tra log bên trên.");
             }
@@ -112,6 +122,23 @@ function UserProfilePage() {
     const formatStorage = (bytes) => {
         if (!bytes && bytes !== 0) return '0 MB';
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    const handleSaveProfile = async () => {
+        const currentId = profileData?.accountID || user?.accountID;
+        if (!currentId) return;
+        setIsSaving(true);
+        try {
+            await updateUserProfileApi(currentId, editForm);
+            setIsEditing(false);
+            loadAllData(currentId);
+            alert("Cập nhật thông tin thành công!");
+        } catch (error) {
+            console.error('Lỗi khi lưu profile:', error);
+            alert("Lỗi cập nhật: " + (error.response?.data?.message || error.message));
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     // ==========================================
@@ -162,25 +189,52 @@ function UserProfilePage() {
                         {/* Hiển thị Họ và Tên riêng biệt */}
                         <div className="detail-item">
                             <User size={18} className="detail-icon" />
-                            <div>
-                                <label>Họ (Last Name)</label>
-                                <p>{lastName}</p>
+                            <div style={{ flex: 1 }}>
+                                <label>Họ</label>
+                                {isEditing ? (
+                                    <input 
+                                        type="text" 
+                                        className="edit-profile-input" 
+                                        value={editForm.lastName} 
+                                        onChange={e => setEditForm({...editForm, lastName: e.target.value})} 
+                                    />
+                                ) : (
+                                    <p>{lastName}</p>
+                                )}
                             </div>
                         </div>
 
                         <div className="detail-item">
                             <User size={18} className="detail-icon" />
-                            <div>
-                                <label>Tên (First Name)</label>
-                                <p>{firstName}</p>
+                            <div style={{ flex: 1 }}>
+                                <label>Tên</label>
+                                {isEditing ? (
+                                    <input 
+                                        type="text" 
+                                        className="edit-profile-input" 
+                                        value={editForm.firstName} 
+                                        onChange={e => setEditForm({...editForm, firstName: e.target.value})} 
+                                    />
+                                ) : (
+                                    <p>{firstName}</p>
+                                )}
                             </div>
                         </div>
 
                         <div className="detail-item">
                             <Mail size={18} className="detail-icon" />
-                            <div>
+                            <div style={{ flex: 1 }}>
                                 <label>Email liên hệ</label>
-                                <p>{email}</p>
+                                {isEditing ? (
+                                    <input 
+                                        type="email" 
+                                        className="edit-profile-input" 
+                                        value={editForm.email} 
+                                        onChange={e => setEditForm({...editForm, email: e.target.value})} 
+                                    />
+                                ) : (
+                                    <p>{email}</p>
+                                )}
                             </div>
                         </div>
 
@@ -202,7 +256,7 @@ function UserProfilePage() {
                         <div className="detail-item">
                             <Cpu size={18} className="detail-icon" />
                             <div>
-                                <label>Số lượt yêu cầu AI (API Calls)</label>
+                                <label>Số lượt yêu cầu AI</label>
                                 <p><strong>{apiCallCount}</strong> lượt</p>
                             </div>
                         </div>
@@ -210,22 +264,63 @@ function UserProfilePage() {
                         <div className="detail-item">
                             <FileText size={18} className="detail-icon" />
                             <div>
-                                <label>ID Tài khoản (Hệ thống)</label>
+                                <label>ID Tài khoản</label>
                                 <p><strong>{displayId}</strong></p>
                             </div>
                         </div>
                     </div>
 
-                    <button
-                        className="btn-refresh-profile"
-                        onClick={() => {
-                            const currentId = profileData?.accountID || user?.accountID;
-                            if (currentId) loadAllData(currentId);
-                        }}
-                    >
-                        <RefreshCw size={14} />
-                        <span>Làm mới thông tin</span>
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        {isEditing ? (
+                            <>
+                                <button
+                                    className="btn-refresh-profile"
+                                    onClick={handleSaveProfile}
+                                    style={{ background: '#10b981', color: 'white', borderColor: '#10b981', width: '130px', justifyContent: 'center' }}
+                                    disabled={isSaving}
+                                >
+                                    <Save size={14} />
+                                    <span>{isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}</span>
+                                </button>
+                                <button
+                                    className="btn-refresh-profile"
+                                    style={{ width: '130px', justifyContent: 'center' }}
+                                    onClick={() => {
+                                        setIsEditing(false);
+                                        setEditForm({
+                                            firstName: profileData?.firstName || '',
+                                            lastName: profileData?.lastName || '',
+                                            email: profileData?.email || ''
+                                        });
+                                    }}
+                                >
+                                    <span>Hủy</span>
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button
+                                    className="btn-refresh-profile"
+                                    style={{ width: '130px', justifyContent: 'center' }}
+                                    onClick={() => setIsEditing(true)}
+                                >
+                                    <Edit3 size={14} />
+                                    <span>Chỉnh sửa</span>
+                                </button>
+                                <button
+                                    className="btn-refresh-profile"
+                                    style={{ width: '130px', justifyContent: 'center' }}
+                                    onClick={() => {
+                                        const currentId = profileData?.accountID || user?.accountID;
+                                        if (currentId) loadAllData(currentId);
+                                    }}
+                                >
+                                    <RefreshCw size={14} />
+                                    <span>Làm mới</span>
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* DANH SÁCH TÀI LIỆU ĐÃ TẢI LÊN (BÊN PHẢI) */}

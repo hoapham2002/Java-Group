@@ -25,6 +25,8 @@ public class DataSeeder implements CommandLineRunner {
         if (accountRepository.count() == 0) {
             Account user = new Account();
             user.setAccountName("Test User");
+            user.setFirstName("Test");
+            user.setLastName("User");
             user.setEmail("user@example.com");
             user.setPasswordHash("hashed_password_mock");
             user.setRole(UserRole.user);

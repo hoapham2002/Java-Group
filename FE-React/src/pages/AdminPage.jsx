@@ -274,7 +274,7 @@ function AdminPage() {
                 {/* TAB 2: QUẢN LÝ USER */}
                 {activeTab === 'users' && (
                     <div className="table-wrapper">
-                        <div className="search-bar">
+                        <div className="admin-search-bar">
                             <Search size={18} />
                             <input
                                 type="text"
@@ -323,7 +323,7 @@ function AdminPage() {
                 {/* TAB 3: QUẢN LÝ FILE */}
                 {activeTab === 'files' && (
                     <div className="table-wrapper">
-                        <div className="search-bar">
+                        <div className="admin-search-bar">
                             <Search size={18} />
                             <input
                                 type="text"

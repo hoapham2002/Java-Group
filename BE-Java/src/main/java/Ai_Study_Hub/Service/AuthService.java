@@ -51,13 +51,18 @@ public class AuthService {
             throw new IllegalArgumentException("Họ không được để trống.");
         }
 
-        // Auto-generate accountName: 10000000 + số lượng tài khoản hiện tại + 1
-        long count = accountRepository.count();
-        String accountName = String.valueOf(10000000 + count + 1);
+        // Validate accountName
+        String accountName = request.getAccountName();
+        if (accountName == null || accountName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tên tài khoản không được để trống.");
+        }
+        if (accountRepository.existsByAccountName(accountName)) {
+            throw new IllegalArgumentException("Tên tài khoản đã tồn tại.");
+        }
 
         // Build Account
         Account account = Account.builder()
-                .accountName(accountName)
+                .accountName(accountName.trim())
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .role(UserRole.user)

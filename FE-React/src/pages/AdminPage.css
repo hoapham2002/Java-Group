@@ -175,7 +175,7 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.search-bar {
+.admin-search-bar {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -187,7 +187,7 @@
     color: #64748b;
 }
 
-.search-bar input {
+.admin-search-bar input {
     background: none;
     border: none;
     outline: none;

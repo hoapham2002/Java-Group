@@ -26,7 +26,7 @@ public class DocumentShareController {
         return ResponseEntity.ok(ApiResponse.success("Success", response));
     }
 
-    @GetMapping("/shared-with-me")
+    @GetMapping("/sharedWithMe")
     public ResponseEntity<ApiResponse<List<DocumentDto>>> getSharedDocuments() {
         List<DocumentDto> sharedDocuments = documentShareService.getSharedDocuments();
         return ResponseEntity.ok(ApiResponse.success("Success", sharedDocuments));
