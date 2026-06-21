@@ -32,12 +32,14 @@ public class AdminProfile {
     @Column(name = "last_name", length = 50)
     private String lastName;
 
-    @Column(name = "storage_quota", columnDefinition = "bigint default 0")
-    private Long storageQuota = 0L;
+    @Column(name = "storage_quota", columnDefinition = "bigint default 104857600")
+    @Builder.Default
+    private Long storageQuota = 104857600L;
 
     @Column(name = "used_storage", columnDefinition = "bigint default 0")
     @Min(value = 0)
     @Max(value = 50)
+    @Builder.Default
     private Long usedStorage = 0L;
 
     @Column(name = "last_login_at")

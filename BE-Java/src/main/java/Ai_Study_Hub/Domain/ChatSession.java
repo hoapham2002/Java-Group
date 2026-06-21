@@ -28,11 +28,16 @@ public class ChatSession {
     private LocalDateTime sessionDeletedAt;
 
     @Column(name = "is_delete")
-    private Boolean isDelete = false;
+    @Builder.Default
+    private Boolean isDeleted = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_account_id", referencedColumnName = "account_id")
     private Account account;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_doc_id", referencedColumnName = "doc_id")
+    private Document document;
 
     @Column(name = "session_deleted_by")
     private Integer sessionDeletedBy;

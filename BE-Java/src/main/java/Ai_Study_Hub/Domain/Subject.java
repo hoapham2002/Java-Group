@@ -30,6 +30,7 @@ public class Subject {
     private LocalDateTime subjDeletedAt;
 
     @Column(name = "is_delete")
+    @Builder.Default
     private Boolean isDelete = false;
 
     @ManyToOne(fetch = FetchType.LAZY)

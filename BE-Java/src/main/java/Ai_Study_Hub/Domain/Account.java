@@ -1,7 +1,7 @@
 package Ai_Study_Hub.Domain;
 
 import java.time.LocalDateTime;
-import Ai_Study_Hub.Domain.Enum.UserRole;
+import Ai_Study_Hub.Domain.enums.UserRole;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -41,6 +41,16 @@ public class Account {
     @Column(name = "account_name", nullable = false)
     private String accountName;
 
+    @NotNull(message = "Tên không được để trống")
+    @Size(max = 50, message = "Tên không được vượt quá 50 ký tự")
+    @Column(name = "first_name", length = 50)
+    private String firstName;
+
+    @NotNull(message = "Họ không được để trống")
+    @Size(max = 50, message = "Họ không được vượt quá 50 ký tự")
+    @Column(name = "last_name", length = 50)
+    private String lastName;
+
     @Column(nullable = false, unique = true)
     @NotBlank(message = "Email không được để trống")
     @Size(max = 255, message = "Email không được vượt quá 255 ký tự")
@@ -55,13 +65,17 @@ public class Account {
     @Column(name = "role", columnDefinition = "varchar default 'user'")
     private UserRole role;
 
-    @Column(name = "updated_at")
+    @Column(name = "created_at", columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
     @Column(name = "is_deleted")
+    @Builder.Default
     private Boolean isDeleted = false;
 
     @Column(name = "deleted_by")
