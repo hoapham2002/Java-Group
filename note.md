@@ -14,18 +14,6 @@ Redis Stream (rag_task_stream)
    8. Gửi XACK về Redis để xác nhận đã xử lý xong
 
 
-function xóa user, thêm user
-funtion getFileByUserID(){
-
-}
-
-function deleteFIleByUserID(){
-
-}
-
-function getMessageSessionByUserID(){
-    
-}
 
 
 
