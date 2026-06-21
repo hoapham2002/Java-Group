@@ -1,0 +1,2683 @@
+diff --cc AI-Service/api/llm_client.py
+index 5ff30d8,2f031f0..0000000
+--- a/AI-Service/api/llm_client.py
++++ b/AI-Service/api/llm_client.py
+@@@ -1,106 -1,35 +1,144 @@@
+++<<<<<<< HEAD
+ +import os
+ +from functools import lru_cache
+ +
+ +import torch
+ +from transformers import AutoTokenizer, AutoModelForQuestionAnswering
+ +
+ +MODEL_DIR = os.getenv(
+ +    "LOCAL_MODEL_DIR",
+ +    "D:/Workspace/projects/Java-Group/AI-Service/models/xlm-roberta-qa"
+ +)
+ +
+ +BASE_TOKENIZER = os.getenv("BASE_TOKENIZER", "xlm-roberta-base")
+ +
+ +
+ +@lru_cache(maxsize=1)
+ +def _load_tokenizer():
+ +    try:
+ +        return AutoTokenizer.from_pretrained(MODEL_DIR, use_fast=True)
+ +    except Exception:
+ +        return AutoTokenizer.from_pretrained(BASE_TOKENIZER, use_fast=True)
+ +
+ +
+ +@lru_cache(maxsize=1)
+ +def _load_model():
+ +    device_map = "auto" if torch.cuda.is_available() else None
+ +    model = AutoModelForQuestionAnswering.from_pretrained(
+ +        MODEL_DIR,
+ +        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+ +        device_map=device_map,
+ +        local_files_only=True,
+ +    )
+ +    model.eval()
+ +    if not torch.cuda.is_available():
+ +        model.to("cpu")
+ +    return model
+ +
+ +
+ +def _predict_answer(question: str, context: str) -> str:
+ +    tokenizer = _load_tokenizer()
+ +    model = _load_model()
+ +
+ +    # Thêm return_offsets_mapping=True để biết vị trí chính xác của từng token thuộc về question hay context
+ +    inputs = tokenizer(
+ +        question,
+ +        context,
+ +        add_special_tokens=True,
+ +        return_tensors="pt",
+ +        truncation=True,
+ +        max_length=512,
+ +        return_offsets_mapping=True 
+ +    )
+ +
+ +    offset_mapping = inputs.pop("offset_mapping")[0]
+ +    # Xác định các token thuộc về phần context (bỏ qua phần câu hỏi và token đặc biệt)
+ +    sequence_ids = inputs.sequence_ids(0)
+ +
+ +    device = next(model.parameters()).device
+ +    inputs = {key: value.to(device) for key, value in inputs.items()}
+ +
+ +    with torch.no_grad():
+ +        outputs = model(**inputs)
+ +
+ +    start_logits = outputs.start_logits[0]
+ +    end_logits = outputs.end_logits[0]
+ +
+ +    # Masking (Che) các token không thuộc phần context bằng giá trị cực âm để model không chọn nhầm vào câu hỏi
+ +    for i in range(len(sequence_ids)):
+ +        if sequence_ids[i] != 1:  # 1 đại diện cho phần văn bản thứ hai (context)
+ +            start_logits[i] = -10000.0
+ +            end_logits[i] = -10000.0
+ +
+ +    # Lấy index có xác suất cao nhất
+ +    start_index = int(torch.argmax(start_logits).item())
+ +    end_index = int(torch.argmax(end_logits).item())
+ +
+ +    # Kiểm tra tính hợp lệ của index
+ +    if start_index >= len(sequence_ids) or end_index >= len(sequence_ids) or end_index < start_index:
+ +        return "Tôi không tìm thấy thông tin trong tài liệu này."
+ +
+ +    # Kiểm tra xem khoảng trích xuất có ký tự thực sự hay không
+ +    if offset_mapping[start_index] == (0, 0) or offset_mapping[end_index] == (0, 0):
+ +        return "Tôi không tìm thấy thông tin trong tài liệu này."
+ +
+ +    # Cắt chính xác đoạn text câu trả lời gốc từ context, không sợ bị lỗi decode ký tự đặc biệt
+ +    input_ids = inputs["input_ids"][0][start_index:end_index + 1]
+ +    answer = tokenizer.decode(input_ids, skip_special_tokens=True).strip()
+ +
+ +    return answer
+ +
+ +
+ +def generate_answer(question: str, context: str) -> str:
+ +    """Sinh câu trả lời từ model QA local dựa trên context."""
+ +    if not context or not context.strip():
+ +        return "Tôi không tìm thấy thông tin trong tài liệu này."
+ +
+ +    try:
+ +        answer = _predict_answer(question, context)
+ +
+ +        if not answer:
+ +            return "Tôi không tìm thấy thông tin trong tài liệu này."
+ +
+ +        return answer
+ +
+ +    except Exception as e:
+ +        print(f"[LLM] Local model error: {e}")
+-         return "Xin lỗi, hiện tại tôi không thể chạy model local. Hãy kiểm tra lại tokenizer, model weights, và thư mục LOCAL_MODEL_DIR."
+++        return "Xin lỗi, hiện tại tôi không thể chạy model local. Hãy kiểm tra lại tokenizer, model weights, và thư mục LOCAL_MODEL_DIR."
+++=======
++ import requests
++ 
++ OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
++ MODEL_NAME = "qwen2.5:7b"
++ 
++ def generate_answer(question: str, context: str) -> str:
++     """Gọi Ollama API với model qwen2.5 để trả lời câu hỏi dựa trên context."""
++     prompt = f"""Bạn là một trợ lý ảo học tập thông minh. 
++ Sử dụng ngữ cảnh được cung cấp dưới đây để trả lời câu hỏi của người dùng một cách chính xác và ngắn gọn bằng tiếng Việt.
++ Nếu ngữ cảnh không chứa thông tin để trả lời, hãy nói rằng "Tôi không tìm thấy thông tin trong tài liệu này" và đừng tự bịa ra thông tin.
++ 
++ Ngữ cảnh:
++ {context}
++ 
++ Câu hỏi:
++ {question}
++ 
++ Câu trả lời:"""
++ 
++     payload = {
++         "model": MODEL_NAME,
++         "prompt": prompt,
++         "stream": False
++     }
++ 
++     try:
++         print(f"[LLM] Đang gửi request tới Ollama ({MODEL_NAME})...")
++         response = requests.post(OLLAMA_URL, json=payload, timeout=300)
++         response.raise_for_status()
++         data = response.json()
++         print("[LLM] Đã nhận được phản hồi từ Ollama.")
++         return data.get("response", "Lỗi: Không nhận được phản hồi từ mô hình.")
++     except Exception as e:
++         print(f"[LLM] Ollama API Error: {e}")
++         return "Xin lỗi, hiện tại tôi không thể kết nối tới mô hình AI để tạo câu trả lời. Vui lòng đảm bảo Ollama đang chạy."
+++>>>>>>> main
+diff --cc BE-Java/build.gradle.kts
+index 9af7099,82fe4ed..0000000
+--- a/BE-Java/build.gradle.kts
++++ b/BE-Java/build.gradle.kts
+@@@ -22,7 -22,8 +22,12 @@@ dependencies 
+  	implementation("org.springframework.boot:spring-boot-starter-security")
+  	implementation("org.springframework.boot:spring-boot-starter-validation")
+  	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+++<<<<<<< HEAD
+ +	// JWT
+++=======
++ 	implementation("com.turkraft.springfilter:jpa:3.1.7")
++ 		// JWT
+++>>>>>>> main
+  	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+  	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+  	runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Config/SecurityConfig.java
+index ce4fb0d,bb2e9bd..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Config/SecurityConfig.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Config/SecurityConfig.java
+@@@ -27,16 -27,14 +27,27 @@@ public class SecurityConfig 
+      @Bean
+      public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+          http
+++<<<<<<< HEAD
+ +            .csrf(AbstractHttpConfigurer::disable)
+ +            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+ +            .sessionManagement(session ->
+ +                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+ +            .authorizeHttpRequests(auth -> auth
+ +                .requestMatchers("/api/v1/auth/**").permitAll()
+ +                .anyRequest().authenticated()
+ +            )
+ +            .authenticationProvider(authenticationProvider)
+ +            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+++=======
++                 .csrf(AbstractHttpConfigurer::disable)
++                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
++                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
++                 .authorizeHttpRequests(auth -> auth
++                         .requestMatchers("/api/v1/auth/**").permitAll()
++                         .anyRequest().permitAll())
++                 .authenticationProvider(authenticationProvider)
++                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+++>>>>>>> main
+  
+          return http.build();
+      }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Controller/DocumentController.java
+index f613de9,b2dfc04..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Controller/DocumentController.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Controller/DocumentController.java
+@@@ -2,9 -2,8 +2,14 @@@ package Ai_Study_Hub.Controller
+  
+  import Ai_Study_Hub.Domain.dto.DocumentUploadRequest;
+  import Ai_Study_Hub.Domain.dto.UploadResponse;
+++<<<<<<< HEAD
+ +import Ai_Study_Hub.Domain.dto.DocumentDto;
+ +import Ai_Study_Hub.Domain.dto.RenameDocumentRequest;
+ +import Ai_Study_Hub.Domain.dto.MoveDocumentRequest;
+++=======
++ import Ai_Study_Hub.Domain.Document;
++ import Ai_Study_Hub.Domain.dto.DocumentDto;
+++>>>>>>> main
+  import Ai_Study_Hub.Service.DocumentService;
+  import Ai_Study_Hub.Util.ApiResponse;
+  import java.util.List;
+@@@ -22,7 -21,8 +27,12 @@@ public class DocumentController 
+      private final DocumentService documentService;
+  
+      @PostMapping
+++<<<<<<< HEAD
+ +    public ResponseEntity<ApiResponse<UploadResponse>> uploadDocument(@ModelAttribute DocumentUploadRequest request) throws Exception {
+++=======
++     public ResponseEntity<ApiResponse<UploadResponse>> uploadDocument(@ModelAttribute DocumentUploadRequest request)
++             throws Exception {
+++>>>>>>> main
+          UploadResponse response = documentService.uploadDocument(request);
+          return ResponseEntity.ok(ApiResponse.success("Upload successful", response));
+      }
+@@@ -45,19 -45,18 +55,36 @@@
+          return ResponseEntity.ok(ApiResponse.success("Success", url));
+      }
+  
+++<<<<<<< HEAD
+ +    @PutMapping("/{id}/rename")
+ +    public ResponseEntity<ApiResponse<DocumentDto>> renameDocument(
+ +            @PathVariable Integer id, 
+ +            @RequestBody RenameDocumentRequest request) {
+ +        DocumentDto updatedDoc = documentService.renameDocument(id, request.getNewName());
+ +        return ResponseEntity.ok(ApiResponse.success("Document renamed successfully", updatedDoc));
+ +    }
+ +
+ +    @PutMapping("/{id}/move")
+ +    public ResponseEntity<ApiResponse<DocumentDto>> moveDocument(
+ +            @PathVariable Integer id, 
+ +            @RequestBody MoveDocumentRequest request) {
+ +        DocumentDto updatedDoc = documentService.moveDocument(id, request.getSubjectId());
+ +        return ResponseEntity.ok(ApiResponse.success("Document moved successfully", updatedDoc));
+ +    }
+++=======
++     @GetMapping("/getfile/{accountID}")
++     public ResponseEntity<ApiResponse<List<DocumentDto>>> getFileByAccountId(
++             @PathVariable("accountID") Integer accountID) {
++         List<DocumentDto> documents = this.documentService.getFilesByAccountId(accountID);
++         return ResponseEntity.ok(
++                 ApiResponse.success("Lấy danh sách file theo tài khoản thành công", documents));
++     }
++ 
++     @GetMapping("/admin")
++     public ResponseEntity<ApiResponse<List<DocumentDto>>> getAllDocumentsForAdmin() {
++         List<DocumentDto> documents = documentService.getAllDocumentsForAdmin();
++         return ResponseEntity.ok(ApiResponse.success("Success", documents));
++     }
++ 
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Controller/SubjectController.java
+index a213fdb,7c337b0..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Controller/SubjectController.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Controller/SubjectController.java
+@@@ -5,8 -5,9 +5,14 @@@ import Ai_Study_Hub.Service.SubjectServ
+  import Ai_Study_Hub.Util.ApiResponse;
+  import lombok.RequiredArgsConstructor;
+  import org.springframework.http.ResponseEntity;
+++<<<<<<< HEAD
+ +import org.springframework.web.bind.annotation.*;
+ +import Ai_Study_Hub.Domain.dto.SubjectRequest;
+++=======
++ import org.springframework.web.bind.annotation.GetMapping;
++ import org.springframework.web.bind.annotation.RequestMapping;
++ import org.springframework.web.bind.annotation.RestController;
+++>>>>>>> main
+  
+  import java.util.List;
+  
+@@@ -22,24 -23,4 +28,27 @@@ public class SubjectController 
+          List<SubjectDto> subjects = subjectService.getAllSubjects();
+          return ResponseEntity.ok(ApiResponse.success("Success", subjects));
+      }
+++<<<<<<< HEAD
+ +
+ +    @PostMapping
+ +    public ResponseEntity<ApiResponse<SubjectDto>> createSubject(@RequestBody SubjectRequest request) {
+ +        SubjectDto subject = subjectService.createSubject(request.getName());
+ +        return ResponseEntity.ok(ApiResponse.success("Subject created successfully", subject));
+ +    }
+ +
+ +    @PutMapping("/{id}/rename")
+ +    public ResponseEntity<ApiResponse<SubjectDto>> renameSubject(
+ +            @PathVariable Integer id, 
+ +            @RequestBody SubjectRequest request) {
+ +        SubjectDto subject = subjectService.renameSubject(id, request.getName());
+ +        return ResponseEntity.ok(ApiResponse.success("Subject renamed successfully", subject));
+ +    }
+ +
+ +    @DeleteMapping("/{id}")
+ +    public ResponseEntity<ApiResponse<Void>> deleteSubject(@PathVariable Integer id) {
+ +        subjectService.deleteSubject(id);
+ +        return ResponseEntity.ok(ApiResponse.success("Subject deleted successfully", null));
+ +    }
+++=======
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/AuthResponse.java
+index f809ed9,c02c97c..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/AuthResponse.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/AuthResponse.java
+@@@ -13,5 -13,8 +13,12 @@@ public class AuthResponse 
+      private String token;
+      private String accountName;
+      private String email;
+++<<<<<<< HEAD
+ +    private String role;
+++=======
++     private Integer accountID;
++     private String role;
++     private String lastName;
++     private String firstName;
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/LoginRequest.java
+index 8e4b50c,03b398a..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/LoginRequest.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/LoginRequest.java
+@@@ -4,6 -4,6 +4,10 @@@ import lombok.Data
+  
+  @Data
+  public class LoginRequest {
+++<<<<<<< HEAD
+ +    private String accountName;  // user_id (e.g. "10000001")
+++=======
++     private String accountName; // user_id (e.g. "10000001")
+++>>>>>>> main
+      private String password;
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/RegisterRequest.java
+index 7cddc53,fe3b407..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/RegisterRequest.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Domain/dto/RegisterRequest.java
+@@@ -6,5 -6,7 +6,11 @@@ import lombok.Data
+  public class RegisterRequest {
+      private String email;
+      private String password;
+++<<<<<<< HEAD
+ +    // accountName is auto-generated (10000000+), not required from user
+++=======
++     private String lastName;
++     private String firstName;
++     private String accountName;
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Repository/AccountRepository.java
+index 93cf646,ff4fa65..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Repository/AccountRepository.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Repository/AccountRepository.java
+@@@ -1,15 -1,26 +1,40 @@@
+  package Ai_Study_Hub.Repository;
+  
+  import Ai_Study_Hub.Domain.Account;
+++<<<<<<< HEAD
+ +import org.springframework.data.jpa.repository.JpaRepository;
+ +import org.springframework.stereotype.Repository;
+ +
+ +import java.util.Optional;
+ +
+ +@Repository
+ +public interface AccountRepository extends JpaRepository<Account, Integer> {
+ +    Optional<Account> findByEmail(String email);
+ +    Optional<Account> findByAccountName(String accountName);
+ +    boolean existsByEmail(String email);
+ +    boolean existsByAccountName(String accountName);
+++=======
++ 
++ import org.springframework.data.domain.Page;
++ import org.springframework.data.domain.Pageable;
++ import org.springframework.data.jpa.repository.JpaRepository;
++ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
++ import org.springframework.stereotype.Repository;
++ 
++ import java.util.List;
++ import java.util.Optional;
++ 
++ @Repository
++ public interface AccountRepository extends JpaRepository<Account, Integer>, JpaSpecificationExecutor<Account> {
++ 
++     Optional<Account> findByEmail(String email);
++ 
++     Optional<Account> findByAccountName(String accountName);
++ 
++     boolean existsByEmail(String email);
++ 
++     boolean existsByAccountName(String accountName);
++ 
++     Page<Account> findByAccountNameContainingIgnoreCase(String accountName, Pageable pageable);
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Repository/DocumentRepository.java
+index c232bea,2840590..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Repository/DocumentRepository.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Repository/DocumentRepository.java
+@@@ -1,12 -1,16 +1,28 @@@
+  package Ai_Study_Hub.Repository;
+  
+++<<<<<<< HEAD
+ +import Ai_Study_Hub.Domain.Document;
+ +import org.springframework.data.jpa.repository.JpaRepository;
+ +import org.springframework.stereotype.Repository;
+ +
+ +import java.util.List;
+ +
+ +@Repository
+ +public interface DocumentRepository extends JpaRepository<Document, Integer> {
+ +    List<Document> findBySubject_SubjId(Integer subjId);
+++=======
++ import Ai_Study_Hub.Domain.Account;
++ import Ai_Study_Hub.Domain.Document;
++ 
++ import java.util.List;
++ 
++ import org.springframework.data.jpa.repository.JpaRepository;
++ import org.springframework.stereotype.Repository;
++ 
++ @Repository
++ public interface DocumentRepository extends JpaRepository<Document, Integer> {
++     List<Document> findByAccount_AccountID(Integer accountID);
++ 
++     List<Document> findByAccountAndIsDeleteFalse(Account account);
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Repository/UserProfileRepository.java
+index edd04eb,43d4282..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Repository/UserProfileRepository.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Repository/UserProfileRepository.java
+@@@ -1,9 -1,13 +1,19 @@@
+  package Ai_Study_Hub.Repository;
+  
+  import Ai_Study_Hub.Domain.UserProfile;
+++<<<<<<< HEAD
+++=======
++ 
++ import java.util.Optional;
++ 
+++>>>>>>> main
+  import org.springframework.data.jpa.repository.JpaRepository;
+  import org.springframework.stereotype.Repository;
+  
+  @Repository
+  public interface UserProfileRepository extends JpaRepository<UserProfile, Integer> {
+++<<<<<<< HEAD
+++=======
++     Optional<UserProfile> findByAccount_AccountID(Integer accountID);
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Service/AuthService.java
+index 432a4e5,2106737..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Service/AuthService.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Service/AuthService.java
+@@@ -15,8 -15,6 +15,11 @@@ import org.springframework.security.aut
+  import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+  import org.springframework.security.crypto.password.PasswordEncoder;
+  import org.springframework.stereotype.Service;
+++<<<<<<< HEAD
+ +import org.springframework.transaction.annotation.Transactional;
+ +
+++=======
+++>>>>>>> main
+  import java.time.LocalDateTime;
+  
+  @Slf4j
+@@@ -24,83 -22,100 +27,182 @@@
+  @RequiredArgsConstructor
+  public class AuthService {
+  
+++<<<<<<< HEAD
+ +    private final AccountRepository accountRepository;
+ +    private final UserProfileRepository userProfileRepository;
+ +    private final PasswordEncoder passwordEncoder;
+ +    private final JwtUtil jwtUtil;
+ +    private final AuthenticationManager authenticationManager;
+ +
+ +    /**
+ +     * Đăng ký tài khoản mới.
+ +     * User ID (accountName) được tạo tự động theo dạng: 10000000 + (count + 1).
+ +     */
+ +    @Transactional
+ +    public AuthResponse register(RegisterRequest request) {
+ +        // Validate
+ +        if (accountRepository.existsByEmail(request.getEmail())) {
+ +            throw new IllegalArgumentException("Email đã được sử dụng.");
+ +        }
+ +
+ +        // Auto-generate accountName: 10000000 + số lượng tài khoản hiện tại + 1
+ +        long count = accountRepository.count();
+ +        String accountName = String.valueOf(10000000 + count + 1);
+ +
+ +        // Build Account
+ +        Account account = Account.builder()
+ +                .accountName(accountName)
+ +                .email(request.getEmail())
+ +                .passwordHash(passwordEncoder.encode(request.getPassword()))
+ +                .role(UserRole.user)
+ +                .createdAt(LocalDateTime.now())
+ +                .updatedAt(LocalDateTime.now())
+ +                .build();
+ +
+ +        // Lưu Account trước để tạo ID trong database
+ +        account = accountRepository.save(account);
+ +
+ +        // Build UserProfile (liên kết 1-1)
+ +        UserProfile profile = UserProfile.builder()
+ +                .firstName("")
+ +                .lastName("")
+ +                .account(account)
+ +                .build();
+ +
+ +        // Lưu profile tường minh thông qua Repository thay vì phụ thuộc cascade
+ +        userProfileRepository.save(profile);
+ +
+ +        log.info("Registered new account: {} ({})", accountName, request.getEmail());
+ +
+ +        String token = jwtUtil.generateToken(accountName);
+ +
+ +        return AuthResponse.builder()
+ +                .token(token)
+ +                .accountName(accountName)
+ +                .email(account.getEmail())
+ +                .role(account.getRole().name())
+ +                .build();
+ +    }
+ +
+ +    /**
+ +     * Đăng nhập bằng user_id (accountName) và password.
+ +     */
+ +    public AuthResponse login(LoginRequest request) {
+ +        // Spring Security authenticate (ném exception nếu sai)
+ +        authenticationManager.authenticate(
+ +                new UsernamePasswordAuthenticationToken(request.getAccountName(), request.getPassword())
+ +        );
+ +
+ +        Account account = accountRepository.findByAccountName(request.getAccountName())
+ +                .orElseThrow(() -> new IllegalArgumentException("Tài khoản không tồn tại."));
+ +
+ +        String token = jwtUtil.generateToken(account.getAccountName());
+ +
+ +        log.info("User '{}' logged in successfully.", account.getAccountName());
+ +
+ +        return AuthResponse.builder()
+ +                .token(token)
+ +                .accountName(account.getAccountName())
+ +                .email(account.getEmail())
+ +                .role(account.getRole().name())
+ +                .build();
+ +    }
+++=======
++         private final AccountRepository accountRepository;
++         private final UserProfileRepository userProfileRepository;
++         private final PasswordEncoder passwordEncoder;
++         private final JwtUtil jwtUtil;
++         private final AuthenticationManager authenticationManager;
++ 
++         public AuthResponse register(RegisterRequest request) {
++                 // 1. Validate Email
++                 if (accountRepository.existsByEmail(request.getEmail())) {
++                         throw new IllegalArgumentException("Email đã được sử dụng.");
++                 }
++ 
++                 // 2. Validate AccountName
++                 String accountName = request.getAccountName();
++                 if (accountName == null || accountName.trim().isEmpty()) {
++                         throw new IllegalArgumentException("Tên tài khoản không được để trống.");
++                 }
++                 if (accountRepository.existsByAccountName(accountName)) {
++                         throw new IllegalArgumentException("Tên tài khoản này đã tồn tại, vui lòng chọn tên khác.");
++                 }
++ 
++                 // 3. Validate Họ và Tên
++                 String firstName = request.getFirstName();
++                 String lastName = request.getLastName();
++                 if (firstName == null || firstName.trim().isEmpty()) {
++                         throw new IllegalArgumentException("Tên không được để trống.");
++                 }
++                 if (lastName == null || lastName.trim().isEmpty()) {
++                         throw new IllegalArgumentException("Họ không được để trống.");
++                 }
++ 
++                 // 4. Build & Lưu Account
++                 Account account = Account.builder()
++                                 .accountName(accountName)
++                                 .email(request.getEmail())
++                                 .passwordHash(passwordEncoder.encode(request.getPassword()))
++                                 .role(UserRole.user)
++                                 .firstName(firstName.trim()) // Thêm dòng này để qua bộ lọc @NotNull của Account
++                                 .lastName(lastName.trim()) // Thêm dòng này để qua bộ lọc @NotNull của Account
++                                 .createdAt(LocalDateTime.now())
++                                 .updatedAt(LocalDateTime.now())
++                                 .build();
++ 
++                 account = accountRepository.save(account);
++ 
++                 // 5. Build & Lưu UserProfile (Giữ nguyên)
++                 UserProfile profile = UserProfile.builder()
++                                 .firstName(firstName.trim())
++                                 .lastName(lastName.trim())
++                                 .account(account)
++                                 .build();
++ 
++                 userProfileRepository.save(profile);
++ 
++                 log.info("Registered new account: {} ({})", accountName, request.getEmail());
++ 
++                 String token = jwtUtil.generateToken(accountName);
++ 
++                 // 6. Trả về AuthResponse
++                 return AuthResponse.builder()
++                                 .token(token)
++                                 .accountName(accountName)
++                                 .email(account.getEmail())
++                                 .role(account.getRole().name())
++                                 .firstName(profile.getFirstName())
++                                 .lastName(profile.getLastName())
++                                 .build();
++         }
++ 
++         /**
++          * Đăng nhập bằng user_id (accountName) và password.
++          */
++         public AuthResponse login(LoginRequest request) {
++                 // Spring Security authenticate (ném exception nếu sai)
++                 authenticationManager.authenticate(
++                                 new UsernamePasswordAuthenticationToken(request.getAccountName(),
++                                                 request.getPassword()));
++ 
++                 Account account = accountRepository.findByAccountName(request.getAccountName())
++                                 .orElseThrow(() -> new IllegalArgumentException("Tài khoản không tồn tại."));
++ 
++                 String token = jwtUtil.generateToken(account.getAccountName());
++ 
++                 log.info("User '{}' logged in successfully.", account.getAccountName());
++ 
++                 // Đã thêm accountID, firstName và lastName vào response trả về
++                 return AuthResponse.builder()
++                                 .token(token)
++                                 .accountID(account.getAccountID())
++                                 .accountName(account.getAccountName())
++                                 .email(account.getEmail())
++                                 .firstName(account.getFirstName())
++                                 .lastName(account.getLastName())
++                                 .role(account.getRole().name())
++                                 .build();
++         }
+++>>>>>>> main
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Service/ChatService.java
+index 0cda656,bb9b89d..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Service/ChatService.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Service/ChatService.java
+@@@ -14,7 -14,6 +14,10 @@@ import Ai_Study_Hub.Repository.AccountR
+  import Ai_Study_Hub.Repository.ChatMessageRepository;
+  import Ai_Study_Hub.Repository.ChatSessionRepository;
+  import Ai_Study_Hub.Repository.DocumentRepository;
+++<<<<<<< HEAD
+ +import Ai_Study_Hub.Repository.DocumentShareRepository;
+++=======
+++>>>>>>> main
+  import lombok.RequiredArgsConstructor;
+  import lombok.extern.slf4j.Slf4j;
+  import org.springframework.stereotype.Service;
+@@@ -35,7 -34,6 +38,10 @@@ public class ChatService 
+      private final ChatMessageRepository chatMessageRepository;
+      private final DocumentRepository documentRepository;
+      private final AccountRepository accountRepository;
+++<<<<<<< HEAD
+ +    private final DocumentShareRepository documentShareRepository;
+++=======
+++>>>>>>> main
+  
+      @Transactional
+      public ChatSessionDto getOrCreateSession(Integer docId, String accountName) {
+@@@ -45,16 -43,6 +51,19 @@@
+          Document document = documentRepository.findById(docId)
+                  .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+  
+++<<<<<<< HEAD
+ +        boolean isOwner = document.getAccount().getAccountID() == account.getAccountID();
+ +        if (!isOwner) {
+ +            boolean isShared = documentShareRepository
+ +                    .existsByDocument_DocIdAndSharedAccount_AccountIDAndIsActiveTrueAndExpiresAtAfter(
+ +                            docId, account.getAccountID(), LocalDateTime.now());
+ +            if (!isShared) {
+ +                throw new IllegalArgumentException("You don't have permission to chat with this document");
+ +            }
+ +        }
+ +
+++=======
+++>>>>>>> main
+          ChatSession session = chatSessionRepository.findTopByDocument_DocIdAndAccount_AccountIDOrderBySessionCreatedAtDesc(docId, account.getAccountID())
+                  .orElseGet(() -> {
+                      ChatSession newSession = ChatSession.builder()
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Service/DocumentService.java
+index cfdfcfb,79e39b6..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Service/DocumentService.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Service/DocumentService.java
+@@@ -11,7 -11,6 +11,10 @@@ import Ai_Study_Hub.Domain.dto.Document
+  import Ai_Study_Hub.Domain.dto.SubjectDto;
+  import Ai_Study_Hub.Repository.AccountRepository;
+  import Ai_Study_Hub.Repository.DocumentRepository;
+++<<<<<<< HEAD
+ +import Ai_Study_Hub.Repository.DocumentShareRepository;
+++=======
+++>>>>>>> main
+  import Ai_Study_Hub.Repository.SubjectRepository;
+  import lombok.RequiredArgsConstructor;
+  import lombok.extern.slf4j.Slf4j;
+@@@ -32,7 -31,6 +35,10 @@@ public class DocumentService 
+      private final MinioService minioService;
+      private final RedisProducerService redisProducerService;
+      private final DocumentRepository documentRepository;
+++<<<<<<< HEAD
+ +    private final DocumentShareRepository documentShareRepository;
+++=======
+++>>>>>>> main
+      private final AccountRepository accountRepository;
+      private final SubjectRepository subjectRepository;
+  
+@@@ -42,7 -40,7 +48,11 @@@
+          if (request.getFile() == null || request.getFile().isEmpty()) {
+              throw new IllegalArgumentException("File is required");
+          }
+++<<<<<<< HEAD
+ +        
+++=======
++ 
+++>>>>>>> main
+          String originalName = request.getFile().getOriginalFilename();
+          if (originalName == null || !originalName.toLowerCase().endsWith(".pdf")) {
+              throw new IllegalArgumentException("Only PDF files are allowed");
+@@@ -53,12 -51,9 +63,18 @@@
+          String accountName = auth.getName();
+          Account account = accountRepository.findByAccountName(accountName)
+                  .orElseThrow(() -> new RuntimeException("Current account not found"));
+++<<<<<<< HEAD
+ +                
+ +        Subject subject = null;
+ +        if (request.getSubjectId() != null) {
+ +            subject = subjectRepository.findById(request.getSubjectId())
+ +                    .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+ +        }
+++=======
++ 
++         Subject subject = subjectRepository.findById(request.getSubjectId())
++                 .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+++>>>>>>> main
+  
+          // 3. Upload to MinIO
+          String minioUrl = minioService.uploadFile(request.getFile());
+@@@ -73,7 -68,7 +89,11 @@@
+                  .account(account)
+                  .subject(subject)
+                  .build();
+++<<<<<<< HEAD
+ +                
+++=======
++ 
+++>>>>>>> main
+          document = documentRepository.save(document);
+          log.info("Saved Document metadata to DB with ID: {}", document.getDocId());
+  
+@@@ -98,11 -93,11 +118,19 @@@
+          Account account = accountRepository.findByAccountName(accountName)
+                  .orElseThrow(() -> new RuntimeException("Current account not found"));
+  
+++<<<<<<< HEAD
+ +        List<Document> documents = documentRepository.findAll()
+ +                .stream()
+ +                .filter(doc -> !doc.getIsDelete() && doc.getAccount().getAccountID() == account.getAccountID())
+ +                .collect(Collectors.toList());
+ +
+++=======
++         // Tối ưu: Lấy trực tiếp danh sách tài liệu hợp lệ của user từ Database
++         // Thay vì kéo toàn bộ database lên RAM rồi mới filter
++         List<Document> documents = documentRepository.findByAccountAndIsDeleteFalse(account);
++ 
++         // Map trực tiếp sang DTO
+++>>>>>>> main
+          return documents.stream().map(doc -> DocumentDto.builder()
+                  .docId(doc.getDocId())
+                  .docOriginalName(doc.getDocOriginalName())
+@@@ -110,11 -105,11 +138,19 @@@
+                  .docFileSize(doc.getDocFileSize())
+                  .docStatus(doc.getDocStatus())
+                  .docUploadedAt(doc.getDocUploadedAt())
+++<<<<<<< HEAD
+ +                .subject(doc.getSubject() != null ? SubjectDto.builder()
+ +                        .subjId(doc.getSubject().getSubjId())
+ +                        .subjName(doc.getSubject().getSubjName())
+ +                        .subjCode(doc.getSubject().getSubjCode())
+ +                        .build() : null)
+++=======
++                 .subject(SubjectDto.builder()
++                         .subjId(doc.getSubject().getSubjId())
++                         .subjName(doc.getSubject().getSubjName())
++                         .subjCode(doc.getSubject().getSubjCode())
++                         .build())
+++>>>>>>> main
+                  .build()).collect(Collectors.toList());
+      }
+  
+@@@ -122,12 -117,12 +158,20 @@@
+      public void deleteDocument(Integer docId) {
+          Document document = documentRepository.findById(docId)
+                  .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+++<<<<<<< HEAD
+ +        
+++=======
++ 
+++>>>>>>> main
+          Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+          if (!document.getAccount().getAccountName().equals(auth.getName())) {
+              throw new IllegalArgumentException("You don't have permission to delete this document");
+          }
+++<<<<<<< HEAD
+ +        
+++=======
++ 
+++>>>>>>> main
+          document.setIsDelete(true);
+          document.setDocDeletedAt(LocalDateTime.now());
+          documentRepository.save(document);
+@@@ -137,21 -132,10 +181,28 @@@
+      public String getDocumentViewUrl(Integer docId) throws Exception {
+          Document document = documentRepository.findById(docId)
+                  .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+++<<<<<<< HEAD
+ +        
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        String currentUsername = auth.getName();
+ +        
+ +        boolean isOwner = document.getAccount().getAccountName().equals(currentUsername);
+ +        
+ +        if (!isOwner) {
+ +            Account currentAccount = accountRepository.findByAccountName(currentUsername)
+ +                    .orElseThrow(() -> new RuntimeException("Current account not found"));
+ +            boolean isShared = documentShareRepository
+ +                    .existsByDocument_DocIdAndSharedAccount_AccountIDAndIsActiveTrueAndExpiresAtAfter(
+ +                            docId, currentAccount.getAccountID(), LocalDateTime.now());
+ +            if (!isShared) {
+ +                throw new IllegalArgumentException("You don't have permission to view this document");
+ +            }
+++=======
++ 
++         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
++         if (!document.getAccount().getAccountName().equals(auth.getName())) {
++             throw new IllegalArgumentException("You don't have permission to view this document");
+++>>>>>>> main
+          }
+  
+          if (document.getIsDelete()) {
+@@@ -168,83 -152,45 +219,126 @@@
+          return minioService.getPresignedUrl(objectName);
+      }
+  
+++<<<<<<< HEAD
+ +    @Transactional
+ +    public DocumentDto renameDocument(Integer docId, String newName) {
+ +        Document document = documentRepository.findById(docId)
+ +                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+ +        
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+ +            throw new IllegalArgumentException("You don't have permission to rename this document");
+ +        }
+ +        
+ +        if (document.getIsDelete()) {
+ +            throw new IllegalArgumentException("Document has been deleted");
+ +        }
+ +
+ +        if (newName == null || newName.trim().isEmpty()) {
+ +            throw new IllegalArgumentException("New name cannot be empty");
+ +        }
+ +
+ +        document.setDocOriginalName(newName);
+ +        document = documentRepository.save(document);
+ +        log.info("Renamed document ID: {} to {}", docId, newName);
+ +
+ +        return DocumentDto.builder()
+ +                .docId(document.getDocId())
+ +                .docOriginalName(document.getDocOriginalName())
+ +                .docStorageUrl(document.getDocStorageUrl())
+ +                .docFileSize(document.getDocFileSize())
+ +                .docStatus(document.getDocStatus())
+ +                .docUploadedAt(document.getDocUploadedAt())
+ +                .subject(document.getSubject() != null ? SubjectDto.builder()
+ +                        .subjId(document.getSubject().getSubjId())
+ +                        .subjName(document.getSubject().getSubjName())
+ +                        .subjCode(document.getSubject().getSubjCode())
+ +                        .build() : null)
+ +                .build();
+ +    }
+ +
+ +    @Transactional
+ +    public DocumentDto moveDocument(Integer docId, Integer newSubjectId) {
+ +        Document document = documentRepository.findById(docId)
+ +                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+ +        
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        if (!document.getAccount().getAccountName().equals(auth.getName())) {
+ +            throw new IllegalArgumentException("You don't have permission to move this document");
+ +        }
+ +        
+ +        if (document.getIsDelete()) {
+ +            throw new IllegalArgumentException("Document has been deleted");
+ +        }
+ +
+ +        Subject subject = null;
+ +        if (newSubjectId != null) {
+ +            subject = subjectRepository.findById(newSubjectId)
+ +                    .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+ +            // Ensure subject belongs to the user
+ +            if (subject.getAccount() == null || !subject.getAccount().getAccountName().equals(auth.getName())) {
+ +                throw new IllegalArgumentException("You don't have permission to move to this subject");
+ +            }
+ +        }
+ +
+ +        document.setSubject(subject);
+ +        document = documentRepository.save(document);
+ +        log.info("Moved document ID: {} to subject ID: {}", docId, newSubjectId);
+ +
+ +        return DocumentDto.builder()
+ +                .docId(document.getDocId())
+ +                .docOriginalName(document.getDocOriginalName())
+ +                .docStorageUrl(document.getDocStorageUrl())
+ +                .docFileSize(document.getDocFileSize())
+ +                .docStatus(document.getDocStatus())
+ +                .docUploadedAt(document.getDocUploadedAt())
+ +                .subject(document.getSubject() != null ? SubjectDto.builder()
+ +                        .subjId(document.getSubject().getSubjId())
+ +                        .subjName(document.getSubject().getSubjName())
+ +                        .subjCode(document.getSubject().getSubjCode())
+ +                        .build() : null)
+ +                .build();
+++=======
++     public List<DocumentDto> getFilesByAccountId(Integer accountID) {
++         List<Document> documents = this.documentRepository.findByAccount_AccountID(accountID);
++         return documents.stream().map(doc -> DocumentDto.builder()
++                 .docId(doc.getDocId())
++                 .docOriginalName(doc.getDocOriginalName())
++                 .docStorageUrl(doc.getDocStorageUrl())
++                 .docFileSize(doc.getDocFileSize())
++                 .docStatus(doc.getDocStatus())
++                 .docUploadedAt(doc.getDocUploadedAt())
++                 // Nếu cần map SubjectDto thì thêm vào đây
++                 .build()).collect(Collectors.toList());
++     }
++ 
++     public List<DocumentDto> getAllDocumentsForAdmin() {
++         List<Document> documents = documentRepository.findAll()
++                 .stream()
++                 .filter(doc -> doc.getIsDelete() == null || !doc.getIsDelete())
++                 .collect(Collectors.toList());
++ 
++         return documents.stream().map(doc -> {
++             // Kiểm tra an toàn cho Subject đề phòng dữ liệu trống trong DB
++             SubjectDto subjectDto = null;
++             if (doc.getSubject() != null) {
++                 subjectDto = SubjectDto.builder()
++                         .subjId(doc.getSubject().getSubjId())
++                         .subjName(doc.getSubject().getSubjName())
++                         .subjCode(doc.getSubject().getSubjCode())
++                         .build();
++             }
++ 
++             return DocumentDto.builder()
++                     .docId(doc.getDocId())
++                     .docOriginalName(doc.getDocOriginalName())
++                     .docStorageUrl(doc.getDocStorageUrl())
++                     .docFileSize(doc.getDocFileSize())
++                     .docStatus(doc.getDocStatus())
++                     .docUploadedAt(doc.getDocUploadedAt())
++                     .subject(subjectDto) // Truyền object đã check null vào đây
++                     .build();
++         }).collect(Collectors.toList());
+++>>>>>>> main
+      }
+  }
+diff --cc BE-Java/src/main/java/Ai_Study_Hub/Service/SubjectService.java
+index 39d4d90,825de70..0000000
+--- a/BE-Java/src/main/java/Ai_Study_Hub/Service/SubjectService.java
++++ b/BE-Java/src/main/java/Ai_Study_Hub/Service/SubjectService.java
+@@@ -3,119 -3,25 +3,139 @@@ package Ai_Study_Hub.Service
+  import Ai_Study_Hub.Domain.Subject;
+  import Ai_Study_Hub.Domain.dto.SubjectDto;
+  import Ai_Study_Hub.Repository.SubjectRepository;
+++<<<<<<< HEAD
+ +import Ai_Study_Hub.Domain.Account;
+ +import Ai_Study_Hub.Domain.Document;
+ +import Ai_Study_Hub.Repository.AccountRepository;
+ +import Ai_Study_Hub.Repository.DocumentRepository;
+  import lombok.RequiredArgsConstructor;
+ +import lombok.extern.slf4j.Slf4j;
+ +import org.springframework.security.core.Authentication;
+ +import org.springframework.security.core.context.SecurityContextHolder;
+  import org.springframework.stereotype.Service;
+ +import org.springframework.transaction.annotation.Transactional;
+ +import java.time.LocalDateTime;
+++=======
+++import lombok.RequiredArgsConstructor;
+++import org.springframework.stereotype.Service;
+++>>>>>>> main
+  
+  import java.util.List;
+  import java.util.stream.Collectors;
+  
+++<<<<<<< HEAD
+ +@Slf4j
+++=======
+++>>>>>>> main
+  @Service
+  @RequiredArgsConstructor
+  public class SubjectService {
+  
+      private final SubjectRepository subjectRepository;
+++<<<<<<< HEAD
+ +    private final AccountRepository accountRepository;
+ +    private final DocumentRepository documentRepository;
+ +
+ +    public List<SubjectDto> getAllSubjects() {
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        String accountName = auth.getName();
+ +        Account account = accountRepository.findByAccountName(accountName)
+ +                .orElseThrow(() -> new RuntimeException("Current account not found"));
+ +
+ +        List<Subject> subjects = subjectRepository.findAll();
+ +        return subjects.stream()
+ +                .filter(subject -> !subject.getIsDelete() && subject.getAccount() != null && subject.getAccount().getAccountID() == account.getAccountID())
+ +                .map(subject -> SubjectDto.builder()
+ +                        .subjId(subject.getSubjId())
+ +                        .subjName(subject.getSubjName())
+ +                        .subjCode(subject.getSubjCode())
+ +                        .subjCreatedAt(subject.getSubjCreatedAt())
+ +                        .build())
+ +                .collect(Collectors.toList());
+ +    }
+ +
+ +    @Transactional
+ +    public SubjectDto createSubject(String name) {
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        Account account = accountRepository.findByAccountName(auth.getName())
+ +                .orElseThrow(() -> new RuntimeException("Current account not found"));
+ +
+ +        Subject subject = Subject.builder()
+ +                .subjName(name)
+ +                .subjCreatedAt(LocalDateTime.now())
+ +                .isDelete(false)
+ +                .account(account)
+ +                .build();
+ +        
+ +        subject = subjectRepository.save(subject);
+ +        log.info("Created new subject ID: {} by {}", subject.getSubjId(), auth.getName());
+ +
+ +        return SubjectDto.builder()
+ +                .subjId(subject.getSubjId())
+ +                .subjName(subject.getSubjName())
+ +                .subjCreatedAt(subject.getSubjCreatedAt())
+ +                .build();
+ +    }
+ +
+ +    @Transactional
+ +    public SubjectDto renameSubject(Integer subjId, String newName) {
+ +        Subject subject = subjectRepository.findById(subjId)
+ +                .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+ +        
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        if (subject.getAccount() == null || !subject.getAccount().getAccountName().equals(auth.getName())) {
+ +            throw new IllegalArgumentException("You don't have permission to rename this subject");
+ +        }
+ +        
+ +        if (subject.getIsDelete()) {
+ +            throw new IllegalArgumentException("Subject has been deleted");
+ +        }
+ +
+ +        subject.setSubjName(newName);
+ +        subject = subjectRepository.save(subject);
+ +        log.info("Renamed subject ID: {} to {}", subjId, newName);
+ +
+ +        return SubjectDto.builder()
+ +                .subjId(subject.getSubjId())
+ +                .subjName(subject.getSubjName())
+ +                .subjCreatedAt(subject.getSubjCreatedAt())
+ +                .build();
+ +    }
+ +
+ +    @Transactional
+ +    public void deleteSubject(Integer subjId) {
+ +        Subject subject = subjectRepository.findById(subjId)
+ +                .orElseThrow(() -> new IllegalArgumentException("Subject not found"));
+ +        
+ +        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+ +        if (subject.getAccount() == null || !subject.getAccount().getAccountName().equals(auth.getName())) {
+ +            throw new IllegalArgumentException("You don't have permission to delete this subject");
+ +        }
+ +
+ +        subject.setIsDelete(true);
+ +        subject.setSubjDeletedAt(LocalDateTime.now());
+ +        subjectRepository.save(subject);
+ +        
+ +        // Soft delete all documents in this subject
+ +        List<Document> docs = documentRepository.findBySubject_SubjId(subjId);
+ +        for (Document doc : docs) {
+ +            if (!doc.getIsDelete()) {
+ +                doc.setIsDelete(true);
+ +                doc.setDocDeletedAt(LocalDateTime.now());
+ +                documentRepository.save(doc);
+ +            }
+ +        }
+ +        log.info("Deleted subject ID: {} and soft deleted {} documents", subjId, docs.size());
+++=======
++ 
++     public List<SubjectDto> getAllSubjects() {
++         List<Subject> subjects = subjectRepository.findAll();
++         return subjects.stream().map(subject -> SubjectDto.builder()
++                 .subjId(subject.getSubjId())
++                 .subjName(subject.getSubjName())
++                 .subjCode(subject.getSubjCode())
++                 .subjCreatedAt(subject.getSubjCreatedAt())
++                 .build()).collect(Collectors.toList());
+++>>>>>>> main
+      }
+  }
+diff --cc FE-React/package-lock.json
+index 3686feb,ec0cad3..0000000
+--- a/FE-React/package-lock.json
++++ b/FE-React/package-lock.json
+@@@ -14,6 -14,7 +14,10 @@@
+          "react": "^19.2.6",
+          "react-dom": "^19.2.6",
+          "react-router-dom": "^7.18.0",
+++<<<<<<< HEAD
+++=======
++         "sweetalert2": "^11.26.25",
+++>>>>>>> main
+          "tailwindcss": "^4.3.1"
+        },
+        "devDependencies": {
+@@@ -268,27 -270,6 +272,30 @@@
+          "node": ">=6.9.0"
+        }
+      },
+++<<<<<<< HEAD
+ +    "node_modules/@emnapi/core": {
+ +      "version": "1.11.1",
+ +      "resolved": "https://registry.npmjs.org/@emnapi/core/-/core-1.11.1.tgz",
+ +      "integrity": "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==",
+ +      "license": "MIT",
+ +      "optional": true,
+ +      "dependencies": {
+ +        "@emnapi/wasi-threads": "1.2.2",
+ +        "tslib": "^2.4.0"
+ +      }
+ +    },
+ +    "node_modules/@emnapi/runtime": {
+ +      "version": "1.11.1",
+ +      "resolved": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.11.1.tgz",
+ +      "integrity": "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw==",
+ +      "license": "MIT",
+ +      "optional": true,
+ +      "dependencies": {
+ +        "tslib": "^2.4.0"
+ +      }
+ +    },
+++=======
+++>>>>>>> main
+      "node_modules/@emnapi/wasi-threads": {
+        "version": "1.2.2",
+        "resolved": "https://registry.npmjs.org/@emnapi/wasi-threads/-/wasi-threads-1.2.2.tgz",
+@@@ -2848,6 -2836,16 +2856,19 @@@
+          "node": ">=0.10.0"
+        }
+      },
+++<<<<<<< HEAD
+++=======
++     "node_modules/sweetalert2": {
++       "version": "11.26.25",
++       "resolved": "https://registry.npmjs.org/sweetalert2/-/sweetalert2-11.26.25.tgz",
++       "integrity": "sha512-+hunCOJdJ6FLj04T9YSLvvZXRjsvIkTeTKP2e4VF8CaBias961BTnWiSFAy7F/CM5eq3QK2Rraoc5Gzftslvkg==",
++       "license": "MIT",
++       "funding": {
++         "type": "individual",
++         "url": "https://github.com/sponsors/limonte"
++       }
++     },
+++>>>>>>> main
+      "node_modules/tailwindcss": {
+        "version": "4.3.1",
+        "resolved": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.3.1.tgz",
+diff --cc FE-React/package.json
+index ae61899,8154fa2..0000000
+--- a/FE-React/package.json
++++ b/FE-React/package.json
+@@@ -16,6 -16,7 +16,10 @@@
+      "react": "^19.2.6",
+      "react-dom": "^19.2.6",
+      "react-router-dom": "^7.18.0",
+++<<<<<<< HEAD
+++=======
++     "sweetalert2": "^11.26.25",
+++>>>>>>> main
+      "tailwindcss": "^4.3.1"
+    },
+    "devDependencies": {
+diff --cc FE-React/src/App.css
+index c81a9a0,e5b3d0c..0000000
+--- a/FE-React/src/App.css
++++ b/FE-React/src/App.css
+@@@ -468,45 -468,6 +468,48 @@@ body 
+    line-height: 1.4;
+  }
+  
+++<<<<<<< HEAD
+ +.rename-container {
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 4px;
+ +  margin-bottom: 6px;
+ +}
+ +
+ +.rename-input {
+ +  flex: 1;
+ +  border: 1px solid var(--primary);
+ +  border-radius: var(--radius-sm);
+ +  padding: 4px 6px;
+ +  font-size: 14px;
+ +  font-family: inherit;
+ +  outline: none;
+ +  box-shadow: 0 0 0 2px var(--primary-bg);
+ +  min-width: 0;
+ +}
+ +
+ +.btn-rename-submit {
+ +  display: flex;
+ +  align-items: center;
+ +  justify-content: center;
+ +  width: 28px;
+ +  height: 28px;
+ +  background: var(--success-bg);
+ +  color: var(--success);
+ +  border: none;
+ +  border-radius: var(--radius-sm);
+ +  cursor: pointer;
+ +  transition: all 0.2s;
+ +  flex-shrink: 0;
+ +}
+ +
+ +.btn-rename-submit:hover {
+ +  background: var(--success);
+ +  color: white;
+ +}
+ +
+++=======
+++>>>>>>> main
+  .doc-subject-tag {
+    display: inline-flex;
+    align-items: center;
+@@@ -852,261 -813,3 +855,264 @@@
+    color: var(--primary);
+  }
+  
+++<<<<<<< HEAD
+ +/* ===== SHARE MODAL (Google Docs Style) ===== */
+ +.share-modal-overlay {
+ +  position: fixed;
+ +  top: 0; left: 0; right: 0; bottom: 0;
+ +  background: rgba(0, 0, 0, 0.4);
+ +  display: flex;
+ +  align-items: center;
+ +  justify-content: center;
+ +  z-index: 1000;
+ +  animation: fadeIn 0.2s ease;
+ +}
+ +
+ +.share-modal-content {
+ +  background: white;
+ +  width: 100%;
+ +  max-width: 500px;
+ +  border-radius: 12px;
+ +  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+ +  display: flex;
+ +  flex-direction: column;
+ +  overflow: hidden;
+ +}
+ +
+ +.share-modal-header {
+ +  padding: 24px 24px 16px;
+ +  display: flex;
+ +  justify-content: space-between;
+ +  align-items: center;
+ +}
+ +
+ +.share-modal-header h3 {
+ +  font-size: 20px;
+ +  font-weight: 600;
+ +  color: #1f2937;
+ +  margin: 0;
+ +  overflow: hidden;
+ +  text-overflow: ellipsis;
+ +  white-space: nowrap;
+ +  max-width: 90%;
+ +}
+ +
+ +.share-modal-close {
+ +  background: transparent;
+ +  border: none;
+ +  cursor: pointer;
+ +  color: #6b7280;
+ +  border-radius: 50%;
+ +  width: 32px;
+ +  height: 32px;
+ +  display: flex;
+ +  align-items: center;
+ +  justify-content: center;
+ +  transition: background 0.2s;
+ +}
+ +.share-modal-close:hover { background: #f3f4f6; }
+ +
+ +.share-modal-body {
+ +  padding: 0 24px 24px;
+ +}
+ +
+ +.share-input-group {
+ +  display: flex;
+ +  align-items: center;
+ +  border: 1px solid #d1d5db;
+ +  border-radius: 8px;
+ +  padding: 6px 6px 6px 14px;
+ +  transition: border-color 0.2s;
+ +}
+ +
+ +.share-input-group:focus-within {
+ +  border-color: var(--primary);
+ +  box-shadow: 0 0 0 1px var(--primary);
+ +}
+ +
+ +.share-email-input {
+ +  flex: 1;
+ +  border: none;
+ +  outline: none;
+ +  padding: 8px 0;
+ +  font-size: 15px;
+ +  color: #374151;
+ +  background: transparent;
+ +}
+ +
+ +.share-email-input::placeholder { color: #9ca3af; }
+ +
+ +.btn-share-send {
+ +  background: var(--primary);
+ +  color: white;
+ +  border: none;
+ +  padding: 9px 18px;
+ +  border-radius: 6px;
+ +  font-weight: 500;
+ +  font-size: 14px;
+ +  cursor: pointer;
+ +  transition: background 0.2s;
+ +}
+ +.btn-share-send:hover { background: var(--primary-dark); }
+ +.btn-share-send:disabled { opacity: 0.6; cursor: not-allowed; }
+ +
+ +@keyframes fadeIn {
+ +  from { opacity: 0; }
+ +  to { opacity: 1; }
+ +}
+ +
+ +/* ===== FOLDERS UI ===== */
+ +.folders-section {
+ +  background: white;
+ +  border-radius: var(--radius-md);
+ +  padding: 24px;
+ +  margin-bottom: 32px;
+ +  border: 1px solid var(--gray-200);
+ +  box-shadow: var(--shadow-sm);
+ +}
+ +
+ +.folders-header {
+ +  display: flex;
+ +  justify-content: space-between;
+ +  align-items: center;
+ +  margin-bottom: 20px;
+ +}
+ +
+ +.folders-header h3 {
+ +  font-size: 18px;
+ +  font-weight: 700;
+ +  color: var(--gray-900);
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 8px;
+ +}
+ +
+ +.breadcrumb-link {
+ +  color: var(--primary);
+ +  cursor: pointer;
+ +  transition: color 0.2s;
+ +}
+ +.breadcrumb-link:hover { color: var(--primary-dark); text-decoration: underline; }
+ +.breadcrumb-separator { color: var(--gray-400); margin: 0 4px; }
+ +
+ +.btn-create-folder {
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 6px;
+ +  background: var(--primary-bg);
+ +  color: var(--primary-dark);
+ +  border: none;
+ +  padding: 8px 14px;
+ +  border-radius: var(--radius-sm);
+ +  font-weight: 600;
+ +  font-size: 13px;
+ +  cursor: pointer;
+ +  transition: all 0.2s;
+ +}
+ +.btn-create-folder:hover {
+ +  background: var(--primary-light);
+ +  color: white;
+ +}
+ +
+ +.folder-grid {
+ +  display: grid;
+ +  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+ +  gap: 16px;
+ +}
+ +
+ +.folder-card {
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 12px;
+ +  border: 1px solid var(--gray-200);
+ +  padding: 12px 16px;
+ +  border-radius: var(--radius);
+ +  cursor: pointer;
+ +  transition: all 0.2s;
+ +  background: var(--gray-50);
+ +}
+ +.folder-card:hover {
+ +  border-color: var(--primary-light);
+ +  background: white;
+ +  box-shadow: var(--shadow-sm);
+ +}
+ +
+ +.folder-icon {
+ +  display: flex;
+ +  align-items: center;
+ +  justify-content: center;
+ +}
+ +
+ +.folder-info {
+ +  flex: 1;
+ +  min-width: 0;
+ +}
+ +
+ +.folder-name {
+ +  font-size: 14px;
+ +  font-weight: 600;
+ +  color: var(--gray-800);
+ +  white-space: nowrap;
+ +  overflow: hidden;
+ +  text-overflow: ellipsis;
+ +}
+ +
+ +.folder-actions {
+ +  display: flex;
+ +  opacity: 0;
+ +  transition: opacity 0.2s;
+ +}
+ +.folder-card:hover .folder-actions { opacity: 1; }
+ +
+ +.folder-actions .btn-icon { width: 24px; height: 24px; }
+ +.folder-actions .btn-icon svg { width: 14px; height: 14px; }
+ +.folder-actions .btn-icon.delete:hover { background: var(--danger-bg); color: var(--danger); }
+ +
+ +.btn-back-root {
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 8px;
+ +  background: transparent;
+ +  border: 1px solid var(--gray-300);
+ +  color: var(--gray-700);
+ +  padding: 8px 16px;
+ +  border-radius: var(--radius-sm);
+ +  font-weight: 600;
+ +  font-size: 14px;
+ +  cursor: pointer;
+ +  transition: all 0.2s;
+ +}
+ +.btn-back-root:hover {
+ +  background: var(--gray-100);
+ +}
+ +
+ +/* ===== MOVE MODAL OPTIONS ===== */
+ +.move-options {
+ +  display: flex;
+ +  flex-direction: column;
+ +  gap: 8px;
+ +  max-height: 300px;
+ +  overflow-y: auto;
+ +}
+ +
+ +.move-option {
+ +  display: flex;
+ +  align-items: center;
+ +  gap: 12px;
+ +  padding: 12px;
+ +  border: 1px solid var(--gray-200);
+ +  border-radius: var(--radius-sm);
+ +  cursor: pointer;
+ +  font-size: 15px;
+ +  font-weight: 500;
+ +  color: var(--gray-800);
+ +  transition: all 0.2s;
+ +}
+ +
+ +.move-option:hover {
+ +  border-color: var(--primary);
+ +  background: var(--primary-bg);
+ +}
+ +
+++=======
+++>>>>>>> main
+diff --cc FE-React/src/App.jsx
+index 5956e24,8a39b3b..0000000
+--- a/FE-React/src/App.jsx
++++ b/FE-React/src/App.jsx
+@@@ -3,40 -3,45 +3,82 @@@ import { useAuth } from './contexts/Aut
+  import AuthPage from './pages/AuthPage';
+  import Dashboard from './pages/Dashboard';
+  import ChatPage from './pages/ChatPage';
+++<<<<<<< HEAD
+ +import './App.css';
+ +
+ +function App() {
+ +  const { user } = useAuth();
+ +
+ +  return (
+ +    <Routes>
+ +      {/* Route Login */}
+ +      <Route 
+ +        path="/login" 
+ +        element={!user ? <AuthPage /> : <Navigate to="/" />} 
+ +      />
+ +      
+ +      {/* Các Route yêu cầu đăng nhập */}
+ +      {/* Redirect root to /documents */}
+ +      <Route 
+ +        path="/" 
+ +        element={<Navigate to="/documents" />} 
+ +      />
+ +
+ +      <Route 
+ +        path="/documents" 
+ +        element={user ? <Dashboard /> : <Navigate to="/login" />} 
+ +      />
+ +      <Route 
+ +        path="/documents/shared" 
+ +        element={user ? <Dashboard /> : <Navigate to="/login" />} 
+ +      />
+ +      <Route 
+ +        path="/chat/:docId" 
+ +        element={user ? <ChatPage /> : <Navigate to="/login" />} 
+ +      />
+ +      
+ +      {/* Route bắt lỗi 404 hoặc đường dẫn lạ -> chuyển về trang chủ (sẽ tự check đăng nhập) */}
+++=======
++ import UserProfilePage from './pages/UserProfilePage';
++ import './App.css';
++ import AdminPage from './pages/AdminPage';
++ function App() {
++   const { user } = useAuth(); // Hoặc cách bạn đang lấy biến user từ Context
++ 
++   return (
++     <Routes>
++ 
++       <Route
++         path="/login"
++         element={!user ? <AuthPage /> : <Navigate to="/" />}
++       />
++ 
++       <Route
++         path="/"
++         element={<Navigate to="/documents" />}
++       />
++ 
++       <Route
++         path="/documents"
++         element={user ? <Dashboard /> : <Navigate to="/login" />}
++       />
++ 
++       <Route
++         path="/documents/shared"
++         element={user ? <Dashboard /> : <Navigate to="/login" />}
++       />
++ 
++       <Route
++         path="/chat/:docId"
++         element={user ? <ChatPage /> : <Navigate to="/login" />}
++       />
++ 
++       <Route
++         path="/user-profile"
++         element={user ? <UserProfilePage /> : <Navigate to="/login" />}
++       />
++       <Route path="/admin" element={<AdminPage />} />
+++>>>>>>> main
+        <Route path="*" element={<Navigate to="/documents" />} />
+      </Routes>
+    );
+diff --cc FE-React/src/contexts/AuthContext.jsx
+index fdc829e,553c392..0000000
+--- a/FE-React/src/contexts/AuthContext.jsx
++++ b/FE-React/src/contexts/AuthContext.jsx
+@@@ -9,22 -9,23 +9,37 @@@ export const AuthProvider = ({ childre
+      if (!token) return null;
+      return {
+        token,
+++<<<<<<< HEAD
+++=======
++       accountID: localStorage.getItem('accountID'), // <-- THÊM DÒNG NÀY: Lấy accountID từ storage
+++>>>>>>> main
+        accountName: localStorage.getItem('accountName'),
+        email: localStorage.getItem('email'),
+        role: localStorage.getItem('role'),
+      };
+    });
+++<<<<<<< HEAD
+ +  
+++=======
++ 
+++>>>>>>> main
+    const navigate = useNavigate();
+  
+    const login = (userData) => {
+      localStorage.setItem('token', userData.token);
+++<<<<<<< HEAD
+++=======
++     localStorage.setItem('accountID', userData.accountID); // <-- THÊM DÒNG NÀY: Lưu accountID xuống storage
+++>>>>>>> main
+      localStorage.setItem('accountName', userData.accountName);
+      localStorage.setItem('email', userData.email);
+      localStorage.setItem('role', userData.role);
+      setUser(userData);
+    };
+++<<<<<<< HEAD
+ +
+++=======
+++>>>>>>> main
+    const logout = () => {
+      localStorage.clear();
+      setUser(null);
+diff --cc FE-React/src/pages/AuthPage.jsx
+index ef53f2b,9c96d0a..0000000
+--- a/FE-React/src/pages/AuthPage.jsx
++++ b/FE-React/src/pages/AuthPage.jsx
+@@@ -1,5 -1,5 +1,9 @@@
+  import React, { useState } from 'react';
+++<<<<<<< HEAD
+ +import { BookOpen, Mail, Lock, User, AlertCircle, Info, Loader } from 'lucide-react';
+++=======
++ import { BookOpen, Mail, Lock, User, AlertCircle, Loader } from 'lucide-react';
+++>>>>>>> main
+  import { loginApi, registerApi } from '../services/api';
+  import './AuthPage.css';
+  import { useAuth } from '../contexts/AuthContext';
+@@@ -10,8 -10,16 +14,21 @@@ function AuthPage() 
+  
+    // Login state
+    const [loginForm, setLoginForm] = useState({ accountName: '', password: '' });
+++<<<<<<< HEAD
+ +  // Register state
+ +  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirmPassword: '' });
+++=======
++ 
++   // Register state
++   const [registerForm, setRegisterForm] = useState({
++     accountName: '',
++     email: '',
++     lastName: '',
++     firstName: '',
++     password: '',
++     confirmPassword: ''
++   });
+++>>>>>>> main
+  
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+@@@ -36,7 -44,7 +53,11 @@@
+        const res = await loginApi({ accountName: loginForm.accountName, password: loginForm.password });
+        login(res.data.data);
+      } catch (err) {
+++<<<<<<< HEAD
+ +      setError(err.response?.data?.message || 'User ID hoặc mật khẩu không đúng.');
+++=======
++       setError(err.response?.data?.message || 'Tên tài khoản hoặc mật khẩu không đúng.');
+++>>>>>>> main
+      } finally {
+        setLoading(false);
+      }
+@@@ -45,8 -53,16 +66,21 @@@
+    // ===== REGISTER =====
+    const handleRegister = async (e) => {
+      e.preventDefault();
+++<<<<<<< HEAD
+ +    if (!registerForm.email || !registerForm.password || !registerForm.confirmPassword) {
+ +      setError('Vui lòng điền đầy đủ thông tin.');
+++=======
++ 
++     if (
++       !registerForm.accountName ||
++       !registerForm.email ||
++       !registerForm.lastName ||
++       !registerForm.firstName ||
++       !registerForm.password ||
++       !registerForm.confirmPassword
++     ) {
++       setError('Vui lòng điền đầy đủ tất cả các thông tin.');
+++>>>>>>> main
+        return;
+      }
+      if (registerForm.password !== registerForm.confirmPassword) {
+@@@ -63,13 -79,34 +97,44 @@@
+      setLoading(true);
+  
+      try {
+++<<<<<<< HEAD
+ +      const res = await registerApi({ email: registerForm.email, password: registerForm.password });
+ +      const { token, accountName, email, role } = res.data.data;
+ +      setSuccessMsg(`Đăng ký thành công! User ID của bạn là: ${accountName}`);
+ +      // Auto login after 1.5s
+ +      setTimeout(() => {
+ +        login(res.data.data);
+ +      }, 1500);
+++=======
++       await registerApi({
++         accountName: registerForm.accountName,
++         email: registerForm.email,
++         lastName: registerForm.lastName,
++         firstName: registerForm.firstName,
++         password: registerForm.password
++       });
++ 
++       // 1. Hiển thị thông báo thành công và thông báo chuyển hướng
++       setSuccessMsg(`Đăng ký thành công tài khoản: ${registerForm.accountName}! Đang quay lại trang đăng nhập...`);
++ 
++       // Lưu lại tên tài khoản vừa đăng ký thành công để tí điền sẵn vào form login
++       const registeredName = registerForm.accountName;
++ 
++       // 2. Chuyển hướng sau 2 giây
++       setTimeout(() => {
++         // Điền sẵn tên tài khoản vừa tạo vào form Đăng nhập
++         setLoginForm({ accountName: registeredName, password: '' });
++ 
++         // Reset lại form đăng ký về trống
++         setRegisterForm({
++           accountName: '', email: '', lastName: '', firstName: '', password: '', confirmPassword: ''
++         });
++ 
++         // Chuyển tab sang login
++         handleTabSwitch('login');
++       }, 2000);
++ 
+++>>>>>>> main
+      } catch (err) {
+        setError(err.response?.data?.message || 'Đăng ký thất bại, vui lòng thử lại.');
+      } finally {
+@@@ -94,7 -131,7 +159,11 @@@
+          </div>
+          <div className="auth-subtitle">
+            {tab === 'login'
+++<<<<<<< HEAD
+ +            ? 'Đăng nhập bằng User ID và mật khẩu của bạn'
+++=======
++             ? 'Đăng nhập bằng tên tài khoản và mật khẩu của bạn'
+++>>>>>>> main
+              : 'Đăng ký để bắt đầu học tập cùng AI'}
+          </div>
+  
+@@@ -125,13 -162,13 +194,21 @@@
+              )}
+  
+              <div className="form-group">
+++<<<<<<< HEAD
+ +              <label className="form-label">User ID</label>
+++=======
++               <label className="form-label">Tên tài khoản</label>
+++>>>>>>> main
+                <div className="form-input-wrapper">
+                  <User className="form-input-icon" />
+                  <input
+                    type="text"
+                    className="form-input"
+++<<<<<<< HEAD
+ +                  placeholder="Nhập User ID (VD: 10000001)"
+++=======
++                   placeholder="Nhập tên tài khoản của bạn"
+++>>>>>>> main
+                    value={loginForm.accountName}
+                    onChange={(e) => setLoginForm({ ...loginForm, accountName: e.target.value })}
+                  />
+@@@ -174,11 -211,22 +251,30 @@@
+                </div>
+              )}
+  
+++<<<<<<< HEAD
+ +            <div className="register-info">
+ +              <Info />
+ +              <span>User ID sẽ được tạo tự động theo dạng <strong>10000000</strong> và tăng dần. Hãy lưu lại để đăng nhập!</span>
+ +            </div>
+ +
+++=======
++             {/* Tên tài khoản */}
++             <div className="form-group">
++               <label className="form-label">Tên tài khoản</label>
++               <div className="form-input-wrapper">
++                 <User className="form-input-icon" />
++                 <input
++                   type="text"
++                   className="form-input"
++                   placeholder="Ví dụ: khang123"
++                   value={registerForm.accountName}
++                   onChange={(e) => setRegisterForm({ ...registerForm, accountName: e.target.value })}
++                 />
++               </div>
++             </div>
++ 
++             {/* Email */}
+++>>>>>>> main
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <div className="form-input-wrapper">
+@@@ -193,6 -241,37 +289,40 @@@
+                </div>
+              </div>
+  
+++<<<<<<< HEAD
+++=======
++             {/* Họ */}
++             <div className="form-group">
++               <label className="form-label">Họ</label>
++               <div className="form-input-wrapper">
++                 <User className="form-input-icon" />
++                 <input
++                   type="text"
++                   className="form-input"
++                   placeholder="Nhập họ của bạn"
++                   value={registerForm.lastName}
++                   onChange={(e) => setRegisterForm({ ...registerForm, lastName: e.target.value })}
++                 />
++               </div>
++             </div>
++ 
++             {/* Tên */}
++             <div className="form-group">
++               <label className="form-label">Tên</label>
++               <div className="form-input-wrapper">
++                 <User className="form-input-icon" />
++                 <input
++                   type="text"
++                   className="form-input"
++                   placeholder="Nhập tên của bạn"
++                   value={registerForm.firstName}
++                   onChange={(e) => setRegisterForm({ ...registerForm, firstName: e.target.value })}
++                 />
++               </div>
++             </div>
++ 
++             {/* Mật khẩu */}
+++>>>>>>> main
+              <div className="form-group">
+                <label className="form-label">Mật khẩu</label>
+                <div className="form-input-wrapper">
+@@@ -207,6 -286,7 +337,10 @@@
+                </div>
+              </div>
+  
+++<<<<<<< HEAD
+++=======
++             {/* Xác nhận mật khẩu */}
+++>>>>>>> main
+              <div className="form-group">
+                <label className="form-label">Xác nhận mật khẩu</label>
+                <div className="form-input-wrapper">
+@@@ -231,4 -311,4 +365,8 @@@
+    );
+  }
+  
+ -export default AuthPage;
+++<<<<<<< HEAD
+++export default AuthPage;
+++=======
+ +export default AuthPage;
+++>>>>>>> main
+diff --cc FE-React/src/pages/Dashboard.jsx
+index f91aacb,56f960a..0000000
+--- a/FE-React/src/pages/Dashboard.jsx
++++ b/FE-React/src/pages/Dashboard.jsx
+@@@ -3,14 -3,9 +3,20 @@@ import { useNavigate, useLocation } fro
+  import {
+    Upload, FileText, Trash2, Search, BookOpen,
+    AlertCircle, Files, CheckCircle, Clock, LogOut,
+++<<<<<<< HEAD
+ +  Share2, FolderOpen, X, Edit2, Check, Folder,
+ +  ArrowLeft, MoveRight, Plus
+ +} from 'lucide-react';
+ +import { 
+ +  getDocuments, getSubjects, uploadDocument, deleteDocument, 
+ +  shareDocument, getSharedDocuments, renameDocument, moveDocument,
+ +  createSubject, renameSubject, deleteSubject 
+ +} from '../services/api';
+++=======
++   Share2, FolderOpen, User
++ } from 'lucide-react';
++ import { getDocuments, getSubjects, uploadDocument, deleteDocument } from '../services/api';
+++>>>>>>> main
+  import { useAuth } from '../contexts/AuthContext';
+  import '../App.css';
+  
+@@@ -38,37 -33,17 +44,51 @@@ function Dashboard() 
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
+++<<<<<<< HEAD
+ +  
+ +  const activeTab = location.pathname.includes('/shared') ? 'shared' : 'mine';
+ +  const [documents, setDocuments] = useState([]);
+ +  const [sharedDocumentsData, setSharedDocumentsData] = useState([]);
+ +  const [subjects, setSubjects] = useState([]);
+ +  
+ +  const [currentSubjectId, setCurrentSubjectId] = useState(null); // null = Root
+ +  
+ +  const [isUploading, setIsUploading] = useState(false);
+ +  const [uploadError, setUploadError] = useState('');
+ +  const [searchQuery, setSearchQuery] = useState('');
+ +  const fileInputRef = useRef(null);
+ +
+ +  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+ +  const [shareDocId, setShareDocId] = useState(null);
+ +  const [shareEmail, setShareEmail] = useState('');
+ +  const [isSharing, setIsSharing] = useState(false);
+ +  const [shareMessage, setShareMessage] = useState('');
+ +
+ +  const [editingDocId, setEditingDocId] = useState(null);
+ +  const [editingDocName, setEditingDocName] = useState('');
+ +
+ +  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+ +  const [moveDocId, setMoveDocId] = useState(null);
+ +
+ +  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+ +  const [newFolderName, setNewFolderName] = useState('');
+ +
+ +  const [editingSubjId, setEditingSubjId] = useState(null);
+ +  const [editingSubjName, setEditingSubjName] = useState('');
+ +
+++=======
++ 
++   // Xác định tab hiện tại dựa trên URL
++   const activeTab = location.pathname.includes('/shared') ? 'shared' : 'mine';
++   const [documents, setDocuments] = useState([]);
++   const [subjects, setSubjects] = useState([]);
++   const [isUploading, setIsUploading] = useState(false);
++   const [uploadError, setUploadError] = useState('');
++   const [selectedSubject, setSelectedSubject] = useState('');
++   const [searchQuery, setSearchQuery] = useState('');
++   const fileInputRef = useRef(null);
++ 
+++>>>>>>> main
+    useEffect(() => {
+      fetchData();
+      const interval = setInterval(fetchData, 10000);
+@@@ -77,14 -52,15 +97,26 @@@
+  
+    const fetchData = async () => {
+      try {
+++<<<<<<< HEAD
+ +      const [docsRes, subsRes, sharedDocsRes] = await Promise.all([
+ +        getDocuments(),
+ +        getSubjects(),
+ +        getSharedDocuments()
+ +      ]);
+ +      setDocuments(docsRes.data.data || []);
+ +      setSubjects(subsRes.data.data || []);
+ +      setSharedDocumentsData(sharedDocsRes.data.data || []);
+++=======
++       const [docsRes, subsRes] = await Promise.all([
++         getDocuments(),
++         getSubjects()
++       ]);
++       setDocuments(docsRes.data.data || []);
++       setSubjects(subsRes.data.data || []);
++       if (subsRes.data.data && subsRes.data.data.length > 0 && !selectedSubject) {
++         setSelectedSubject(subsRes.data.data[0].subjId.toString());
++       }
+++>>>>>>> main
+      } catch (error) {
+        console.error('Error fetching data', error);
+      }
+@@@ -97,11 -73,17 +129,25 @@@
+        setUploadError('Vui lòng chọn file PDF.');
+        return;
+      }
+++<<<<<<< HEAD
+ +    setUploadError('');
+ +    setIsUploading(true);
+ +    try {
+ +      console.log('Uploading file:', file.name, 'to subjectId:', currentSubjectId);
+ +      await uploadDocument(file, currentSubjectId);
+++=======
++     if (!selectedSubject) {
++       setUploadError('Vui lòng chọn môn học.');
++       return;
++     }
++     setUploadError('');
++     setIsUploading(true);
++     const formData = new FormData();
++     formData.append('file', file);
++     formData.append('subjectId', selectedSubject);
++     try {
++       await uploadDocument(formData);
+++>>>>>>> main
+        fetchData();
+      } catch (error) {
+        setUploadError('Lỗi khi tải file lên: ' + (error.response?.data?.message || error.message));
+@@@ -123,77 -105,6 +169,80 @@@
+      }
+    };
+  
+++<<<<<<< HEAD
+ +  const handleRenameClick = (e, doc) => {
+ +    e.stopPropagation();
+ +    setEditingDocId(doc.docId);
+ +    setEditingDocName(doc.docOriginalName);
+ +  };
+ +
+ +  const handleRenameSubmit = async (e, docId) => {
+ +    e.stopPropagation();
+ +    if (!editingDocName.trim()) {
+ +      setEditingDocId(null);
+ +      return;
+ +    }
+ +    try {
+ +      await renameDocument(docId, editingDocName);
+ +      setEditingDocId(null);
+ +      fetchData();
+ +    } catch (error) {
+ +      console.error('Lỗi khi đổi tên:', error);
+ +      alert('Không thể đổi tên tài liệu!');
+ +    }
+ +  };
+ +
+ +  const handleRenameKeyDown = (e, docId) => {
+ +    if (e.key === 'Enter') handleRenameSubmit(e, docId);
+ +    else if (e.key === 'Escape') {
+ +      e.stopPropagation();
+ +      setEditingDocId(null);
+ +    }
+ +  };
+ +
+ +  const handleMoveClick = (e, docId) => {
+ +    e.stopPropagation();
+ +    setMoveDocId(docId);
+ +    setIsMoveModalOpen(true);
+ +  };
+ +
+ +  const handleMoveSubmit = async (targetSubjectId) => {
+ +    try {
+ +      await moveDocument(moveDocId, targetSubjectId);
+ +      setIsMoveModalOpen(false);
+ +      setMoveDocId(null);
+ +      fetchData();
+ +    } catch (error) {
+ +      alert('Lỗi khi di chuyển tài liệu');
+ +    }
+ +  };
+ +
+ +  const handleShareClick = (e, docId) => {
+ +    e.stopPropagation();
+ +    setShareDocId(docId);
+ +    setShareEmail('');
+ +    setShareMessage('');
+ +    setIsShareModalOpen(true);
+ +  };
+ +
+ +  const handleShareSubmit = async () => {
+ +    if (!shareEmail) return;
+ +    setIsSharing(true);
+ +    setShareMessage('');
+ +    try {
+ +      await shareDocument({ docId: shareDocId, email: shareEmail });
+ +      setShareMessage('Chia sẻ thành công!');
+ +      setTimeout(() => setIsShareModalOpen(false), 2000);
+ +      fetchData();
+ +    } catch (error) {
+ +      setShareMessage('Lỗi: ' + (error.response?.data?.message || error.message));
+ +    } finally {
+ +      setIsSharing(false);
+ +    }
+ +  };
+ +
+++=======
+++>>>>>>> main
+    const handleDocClick = (doc) => {
+      if (doc.docStatus === 'completed') {
+        navigate(`/chat/${doc.docId}`);
+@@@ -202,71 -113,10 +251,78 @@@
+      }
+    };
+  
+++<<<<<<< HEAD
+ +  // SUBJECT HANDLERS
+ +  const handleCreateSubject = async () => {
+ +    if (!newFolderName.trim()) return;
+ +    try {
+ +      await createSubject(newFolderName);
+ +      setNewFolderName('');
+ +      setIsCreateFolderModalOpen(false);
+ +      fetchData();
+ +    } catch (error) {
+ +      alert('Lỗi tạo thư mục');
+ +    }
+ +  };
+ +
+ +  const handleDeleteSubject = async (e, subjId) => {
+ +    e.stopPropagation();
+ +    if (!window.confirm('CẢNH BÁO: Bạn có chắc chắn muốn xóa thư mục này? Toàn bộ tài liệu bên trong thư mục cũng sẽ bị xóa!')) return;
+ +    try {
+ +      await deleteSubject(subjId);
+ +      if (currentSubjectId === subjId) setCurrentSubjectId(null);
+ +      fetchData();
+ +    } catch (error) {
+ +      alert('Lỗi xóa thư mục');
+ +    }
+ +  };
+ +
+ +  const handleRenameSubjClick = (e, sub) => {
+ +    e.stopPropagation();
+ +    setEditingSubjId(sub.subjId);
+ +    setEditingSubjName(sub.subjName);
+ +  };
+ +
+ +  const handleRenameSubjSubmit = async (e, subjId) => {
+ +    e.stopPropagation();
+ +    if (!editingSubjName.trim()) {
+ +      setEditingSubjId(null);
+ +      return;
+ +    }
+ +    try {
+ +      await renameSubject(subjId, editingSubjName);
+ +      setEditingSubjId(null);
+ +      fetchData();
+ +    } catch (error) {
+ +      alert('Lỗi đổi tên thư mục');
+ +    }
+ +  };
+ +
+ +  const handleRenameSubjKeyDown = (e, subjId) => {
+ +    if (e.key === 'Enter') handleRenameSubjSubmit(e, subjId);
+ +    else if (e.key === 'Escape') {
+ +      e.stopPropagation();
+ +      setEditingSubjId(null);
+ +    }
+ +  };
+ +
+ +  // Filter documents based on tab, subject, and search
+ +  const myDocs = documents.filter(d => {
+ +    const matchSearch = !searchQuery || d.docOriginalName?.toLowerCase().includes(searchQuery.toLowerCase());
+ +    // Nếu đang tìm kiếm, quét toàn bộ tài liệu bất kể folder. Ngược lại thì lọc theo folder hiện tại.
+ +    const matchSubject = searchQuery ? true : (currentSubjectId === null ? !d.subject : d.subject?.subjId === currentSubjectId);
+ +    return matchSearch && matchSubject;
+ +  });
+ +
+ +  const sharedDocs = sharedDocumentsData.filter(d =>
+ +    !searchQuery || d.docOriginalName?.toLowerCase().includes(searchQuery.toLowerCase())
+ +  );
+++=======
++   const myDocs = documents.filter(d =>
++     !searchQuery || d.docOriginalName?.toLowerCase().includes(searchQuery.toLowerCase())
++   );
++   const sharedDocs = [];
+++>>>>>>> main
+  
+    const displayedDocs = activeTab === 'mine' ? myDocs : sharedDocs;
+    const completedCount = documents.filter(d => d.docStatus === 'completed').length;
+@@@ -297,9 -147,17 +353,23 @@@
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+++<<<<<<< HEAD
+ +          <div className="avatar" title={user?.email}>
+ +            {user?.accountName?.[0]?.toUpperCase() || 'U'}
+ +          </div>
+++=======
++ 
++           {/* ĐÃ CẬP NHẬT: Nhấn vào biểu tượng sẽ điều hướng sang trang cá nhân */}
++           <div
++             className="avatar"
++             title="Thông tin cá nhân"
++             onClick={() => navigate('/user-profile')}
++             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
++           >
++             <User size={20} />
++           </div>
++ 
+++>>>>>>> main
+            <button className="btn-logout" onClick={logout} title="Đăng xuất">
+              <LogOut />
+              <span>Đăng xuất</span>
+@@@ -345,11 -203,11 +415,19 @@@
+            <div className="page-tabs">
+              <button
+                className={`page-tab${activeTab === 'mine' ? ' active' : ''}`}
+++<<<<<<< HEAD
+ +              onClick={() => { navigate('/documents'); setCurrentSubjectId(null); }}
+ +            >
+ +              <FolderOpen />
+ +              Của tôi
+ +              <span className="tab-badge">{documents.length}</span>
+++=======
++               onClick={() => navigate('/documents')}
++             >
++               <FolderOpen />
++               Của tôi
++               <span className="tab-badge">{myDocs.length}</span>
+++>>>>>>> main
+              </button>
+              <button
+                className={`page-tab${activeTab === 'shared' ? ' active' : ''}`}
+@@@ -363,6 -221,18 +441,21 @@@
+  
+            {activeTab === 'mine' && (
+              <div className="upload-panel">
+++<<<<<<< HEAD
+++=======
++               <div className="upload-panel-field">
++                 <label>Môn học</label>
++                 <select
++                   className="select-subject"
++                   value={selectedSubject}
++                   onChange={(e) => setSelectedSubject(e.target.value)}
++                 >
++                   {subjects.map(sub => (
++                     <option key={sub.subjId} value={sub.subjId}>{sub.subjName}</option>
++                   ))}
++                 </select>
++               </div>
+++>>>>>>> main
+                <input
+                  type="file"
+                  accept=".pdf"
+@@@ -379,7 -249,7 +472,11 @@@
+                  {isUploading ? (
+                    <><div className="spinner" /><span>Đang tải...</span></>
+                  ) : (
+++<<<<<<< HEAD
+ +                  <><Upload /><span>Tải lên PDF vào {currentSubjectId ? 'Thư mục' : 'Root'}</span></>
+++=======
++                   <><Upload /><span>Tải lên PDF</span></>
+++>>>>>>> main
+                  )}
+                </button>
+              </div>
+@@@ -393,82 -263,14 +490,92 @@@
+            </div>
+          )}
+  
+++<<<<<<< HEAD
+ +        {/* ===== FOLDER LIST ===== */}
+ +        {activeTab === 'mine' && (
+ +          <div className="folders-section">
+ +            <div className="folders-header">
+ +              <h3>
+ +                {currentSubjectId === null ? 'Thư mục gốc (Root)' : (
+ +                  <span className="breadcrumb">
+ +                    <span className="breadcrumb-link" onClick={() => setCurrentSubjectId(null)}>Root</span>
+ +                    <span className="breadcrumb-separator">/</span>
+ +                    {subjects.find(s => s.subjId === currentSubjectId)?.subjName}
+ +                  </span>
+ +                )}
+ +              </h3>
+ +              {currentSubjectId === null && (
+ +                <button className="btn-create-folder" onClick={() => setIsCreateFolderModalOpen(true)}>
+ +                  <Plus size={16} /> Thư mục mới
+ +                </button>
+ +              )}
+ +            </div>
+ +            
+ +            {currentSubjectId === null && (
+ +              <div className="folder-grid">
+ +                {subjects.map(sub => (
+ +                  <div key={sub.subjId} className="folder-card" onClick={() => setCurrentSubjectId(sub.subjId)}>
+ +                    <div className="folder-icon"><Folder fill="#facc15" color="#ca8a04" /></div>
+ +                    <div className="folder-info">
+ +                      {editingSubjId === sub.subjId ? (
+ +                        <div className="rename-container" onClick={(e) => e.stopPropagation()}>
+ +                          <input
+ +                            type="text"
+ +                            className="rename-input"
+ +                            value={editingSubjName}
+ +                            onChange={(e) => setEditingSubjName(e.target.value)}
+ +                            onKeyDown={(e) => handleRenameSubjKeyDown(e, sub.subjId)}
+ +                            autoFocus
+ +                          />
+ +                          <button 
+ +                            className="btn-rename-submit"
+ +                            onClick={(e) => handleRenameSubjSubmit(e, sub.subjId)}
+ +                            title="Lưu tên"
+ +                          >
+ +                            <Check size={16} />
+ +                          </button>
+ +                        </div>
+ +                      ) : (
+ +                        <div className="folder-name" title={sub.subjName}>{sub.subjName}</div>
+ +                      )}
+ +                    </div>
+ +                    <div className="folder-actions" onClick={e => e.stopPropagation()}>
+ +                      <button className="btn-icon" title="Đổi tên" onClick={(e) => handleRenameSubjClick(e, sub)}>
+ +                        <Edit2 />
+ +                      </button>
+ +                      <button className="btn-icon delete" title="Xóa thư mục" onClick={(e) => handleDeleteSubject(e, sub.subjId)}>
+ +                        <Trash2 />
+ +                      </button>
+ +                    </div>
+ +                  </div>
+ +                ))}
+ +              </div>
+ +            )}
+ +            {currentSubjectId !== null && (
+ +              <button className="btn-back-root" onClick={() => setCurrentSubjectId(null)}>
+ +                <ArrowLeft size={16} /> Quay lại Root
+ +              </button>
+ +            )}
+ +          </div>
+ +        )}
+ +
+ +        {/* ===== DOCUMENT GRID ===== */}
+ +        <div className="doc-grid" style={{ marginTop: '20px' }}>
+++=======
++         {/* ===== DOCUMENT GRID ===== */}
++         <div className="doc-grid">
+++>>>>>>> main
+            {displayedDocs.map((doc, idx) => {
+              const colorKey = THUMB_COLORS[idx % THUMB_COLORS.length];
+              const statusInfo = getStatusInfo(doc.docStatus);
+              return (
+++<<<<<<< HEAD
+ +              <div 
+ +                key={doc.docId} 
+++=======
++               <div
++                 key={doc.docId}
+++>>>>>>> main
+                  className="doc-card"
+                  onClick={() => handleDocClick(doc)}
+                >
+@@@ -477,34 -279,12 +584,43 @@@
+                    <div className="doc-type-badge">PDF</div>
+                  </div>
+                  <div className="doc-card-body">
+++<<<<<<< HEAD
+ +                  {editingDocId === doc.docId ? (
+ +                    <div className="rename-container" onClick={(e) => e.stopPropagation()}>
+ +                      <input
+ +                        type="text"
+ +                        className="rename-input"
+ +                        value={editingDocName}
+ +                        onChange={(e) => setEditingDocName(e.target.value)}
+ +                        onKeyDown={(e) => handleRenameKeyDown(e, doc.docId)}
+ +                        autoFocus
+ +                      />
+ +                      <button 
+ +                        className="btn-rename-submit"
+ +                        onClick={(e) => handleRenameSubmit(e, doc.docId)}
+ +                        title="Lưu tên"
+ +                      >
+ +                        <Check size={16} />
+ +                      </button>
+ +                    </div>
+ +                  ) : (
+ +                    <div className="doc-card-name" title={doc.docOriginalName}>
+ +                      {doc.docOriginalName}
+ +                    </div>
+ +                  )}
+ +                  {activeTab === 'shared' ? (
+ +                    <div className="doc-subject-tag">Được chia sẻ</div>
+ +                  ) : (
+ +                    <div className="doc-subject-tag">{doc.subject?.subjName || 'Thư mục gốc'}</div>
+ +                  )}
+++=======
++                   <div className="doc-card-name" title={doc.docOriginalName}>
++                     {doc.docOriginalName}
++                   </div>
++                   <div className="doc-subject-tag">
++                     {doc.subject?.subjName || 'Chưa phân loại'}
++                   </div>
+++>>>>>>> main
+                    <div className="doc-card-footer">
+                      <div className="doc-status">
+                        <span className={`status-dot ${statusInfo.dotClass}`} />
+@@@ -513,31 -293,6 +629,34 @@@
+                        </span>
+                      </div>
+                      <div className="doc-actions">
+++<<<<<<< HEAD
+ +                      {activeTab === 'mine' && (
+ +                        <>
+ +                          <button
+ +                            className="btn-icon"
+ +                            title="Di chuyển"
+ +                            onClick={(e) => handleMoveClick(e, doc.docId)}
+ +                          >
+ +                            <MoveRight />
+ +                          </button>
+ +                          <button
+ +                            className="btn-icon"
+ +                            title="Đổi tên tài liệu"
+ +                            onClick={(e) => handleRenameClick(e, doc)}
+ +                          >
+ +                            <Edit2 />
+ +                          </button>
+ +                          <button
+ +                            className="btn-icon"
+ +                            title="Chia sẻ tài liệu"
+ +                            onClick={(e) => handleShareClick(e, doc.docId)}
+ +                          >
+ +                            <Share2 />
+ +                          </button>
+ +                        </>
+ +                      )}
+++=======
+++>>>>>>> main
+                        <button
+                          className="btn-icon"
+                          title="Xóa tài liệu"
+@@@ -560,7 -315,10 +679,14 @@@
+                {activeTab === 'mine' ? (
+                  <>
+                    <h3>Chưa có tài liệu nào</h3>
+++<<<<<<< HEAD
+ +                  <p>Thư mục này đang trống. Hãy tải lên file PDF để bắt đầu.</p>
+++=======
++                   <p>Tải lên file PDF đầu tiên của bạn để bắt đầu học tập cùng AI</p>
++                   <button className="btn-empty-upload" onClick={() => fileInputRef.current?.click()}>
++                     Tải lên ngay
++                   </button>
+++>>>>>>> main
+                  </>
+                ) : (
+                  <>
+@@@ -571,114 -329,9 +697,121 @@@
+              </div>
+            )}
+          </div>
+++<<<<<<< HEAD
+ +
+ +        {/* ===== CREATE FOLDER MODAL ===== */}
+ +        {isCreateFolderModalOpen && (
+ +          <div className="share-modal-overlay" onClick={() => setIsCreateFolderModalOpen(false)}>
+ +            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+ +              <div className="share-modal-header">
+ +                <h3>Tạo thư mục mới</h3>
+ +                <button className="share-modal-close" onClick={() => setIsCreateFolderModalOpen(false)}>
+ +                  <X size={20} />
+ +                </button>
+ +              </div>
+ +              <div className="share-modal-body">
+ +                <div className="share-input-group">
+ +                  <input
+ +                    type="text"
+ +                    className="share-email-input"
+ +                    placeholder="Tên thư mục..."
+ +                    value={newFolderName}
+ +                    onChange={e => setNewFolderName(e.target.value)}
+ +                    onKeyDown={e => { if(e.key === 'Enter') handleCreateSubject(); }}
+ +                    autoFocus
+ +                  />
+ +                  <button 
+ +                    className="btn-share-send" 
+ +                    onClick={handleCreateSubject} 
+ +                    disabled={!newFolderName}
+ +                  >
+ +                    Tạo
+ +                  </button>
+ +                </div>
+ +              </div>
+ +            </div>
+ +          </div>
+ +        )}
+ +
+ +        {/* ===== MOVE DOCUMENT MODAL ===== */}
+ +        {isMoveModalOpen && (
+ +          <div className="share-modal-overlay" onClick={() => setIsMoveModalOpen(false)}>
+ +            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+ +              <div className="share-modal-header">
+ +                <h3>Di chuyển tài liệu</h3>
+ +                <button className="share-modal-close" onClick={() => setIsMoveModalOpen(false)}>
+ +                  <X size={20} />
+ +                </button>
+ +              </div>
+ +              <div className="share-modal-body">
+ +                <div className="move-options">
+ +                  <div 
+ +                    className="move-option" 
+ +                    onClick={() => handleMoveSubmit(null)}
+ +                  >
+ +                    <FolderOpen size={18} /> Thư mục gốc (Root)
+ +                  </div>
+ +                  {subjects.map(sub => (
+ +                    <div 
+ +                      key={sub.subjId} 
+ +                      className="move-option"
+ +                      onClick={() => handleMoveSubmit(sub.subjId)}
+ +                    >
+ +                      <Folder fill="#facc15" color="#ca8a04" size={18} /> {sub.subjName}
+ +                    </div>
+ +                  ))}
+ +                </div>
+ +              </div>
+ +            </div>
+ +          </div>
+ +        )}
+ +
+ +        {/* ===== SHARE MODAL ===== */}
+ +        {isShareModalOpen && (
+ +          <div className="share-modal-overlay" onClick={() => setIsShareModalOpen(false)}>
+ +            <div className="share-modal-content" onClick={e => e.stopPropagation()}>
+ +              <div className="share-modal-header">
+ +                <h3>Chia sẻ "{documents.find(d => d.docId === shareDocId)?.docOriginalName || 'Tài liệu'}"</h3>
+ +                <button className="share-modal-close" onClick={() => setIsShareModalOpen(false)}>
+ +                  <X size={20} />
+ +                </button>
+ +              </div>
+ +              <div className="share-modal-body">
+ +                <div className="share-input-group">
+ +                  <input
+ +                    type="email"
+ +                    className="share-email-input"
+ +                    placeholder="Thêm người bằng email..."
+ +                    value={shareEmail}
+ +                    onChange={e => setShareEmail(e.target.value)}
+ +                    onKeyDown={e => { if(e.key === 'Enter') handleShareSubmit(); }}
+ +                  />
+ +                  <button 
+ +                    className="btn-share-send" 
+ +                    onClick={handleShareSubmit} 
+ +                    disabled={isSharing || !shareEmail}
+ +                  >
+ +                    {isSharing ? 'Đang gửi...' : 'Gửi'}
+ +                  </button>
+ +                </div>
+ +                {shareMessage && (
+ +                  <div style={{ marginTop: '12px', fontSize: '14px', color: shareMessage.includes('Lỗi') ? '#ef4444' : '#10b981' }}>
+ +                    {shareMessage}
+ +                  </div>
+ +                )}
+ +              </div>
+ +            </div>
+ +          </div>
+ +        )}
+++=======
+++>>>>>>> main
+        </main>
+      </div>
+    );
+  }
+  
+ -export default Dashboard;
+++<<<<<<< HEAD
+++export default Dashboard;
+++=======
+ +export default Dashboard;
+++>>>>>>> main
+diff --cc FE-React/src/services/api.js
+index 8249f15,96f3111..0000000
+--- a/FE-React/src/services/api.js
++++ b/FE-React/src/services/api.js
+@@@ -29,29 -29,15 +29,41 @@@ api.interceptors.response.use
+  export const loginApi = (data) => api.post('/auth/login', data);
+  export const registerApi = (data) => api.post('/auth/register', data);
+  
+++<<<<<<< HEAD
+ +// ===== DOCUMENTS =====
+ +export const getDocuments = () => api.get('/documents');
+ +export const createSubject = (name) => api.post('/subjects', { name });
+ +export const renameSubject = (id, name) => api.put(`/subjects/${id}/rename`, { name });
+ +export const deleteSubject = (id) => api.delete(`/subjects/${id}`);
+ +
+ +export const uploadDocument = (file, subjectId) => {
+ +  const formData = new FormData();
+ +  formData.append('file', file);
+ +  if (subjectId) {
+ +    formData.append('subjectId', subjectId);
+ +  }
+ +  return api.post('/documents', formData, {
+ +    headers: { 'Content-Type': 'multipart/form-data' },
+ +  });
+ +};
+ +export const deleteDocument = (id) => api.delete(`/documents/${id}`);
+ +export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/url`);
+ +export const renameDocument = (id, newName) => api.put(`/documents/${id}/rename`, { newName });
+ +export const moveDocument = (id, subjectId) => api.put(`/documents/${id}/move`, { subjectId });
+ +export const shareDocument = (data) => api.post('/documents/share', data);
+ +export const getSharedDocuments = () => api.get('/documents/shared-with-me');
+ +
+++=======
++ // ===== DOCUMENTS =====\
++ export const getDocumentsForAdmin = () => api.get('/documents/admin');
++ export const getDocuments = () => api.get('/documents');
++ export const uploadDocument = (formData) => api.post('/documents', formData, {
++   headers: { 'Content-Type': 'multipart/form-data' },
++ });
++ export const deleteDocument = (id) => api.delete(`/documents/${id}`);
++ export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/url`);
++ export const getFileByAccountId = (accountId) => api.get(`/documents/getfile/${accountId}`);
+++>>>>>>> main
+  // ===== SUBJECTS =====
+  export const getSubjects = () => api.get('/subjects');
+  
+@@@ -59,4 -45,24 +71,27 @@@
+  export const getOrCreateChatSession = (docId) => api.post(`/chat/sessions?docId=${docId}`);
+  export const sendChatMessage = (sessionId, message) => api.post(`/chat/sessions/${sessionId}/messages`, { docId: null, message });
+  
+++<<<<<<< HEAD
+++=======
++ // ===== ACCOUNT =====
++ 
++ // ===== ACCOUNT =====
++ 
++ export const getUserById = (id) => api.get(`/account/getuser/${id}`);
++ 
++ export const getAllUsers = (params) => api.get('/account/getalluser', { params });
++ 
++ export const deleteUserById = (id) => api.delete(`/account/deleteuser/${id}`);
++ 
++ export const searchAccount = (name, page = 0, size = 5) =>
++   api.get('/account/search', {
++     params: {
++       name,
++       page,
++       size
++     }
++   });
++ // ===== USERPROFILE =====
++ export const getUserProfileApi = (accountId) => api.get(`/user-profile/${accountId}`);
+++>>>>>>> main
+  export default api;
+diff --cc note.md
+index 2e5fd2c,038d5e1..0000000
+--- a/note.md
++++ b/note.md
+@@@ -11,11 -11,4 +11,15 @@@ Redis Stream (rag_task_stream
+     5. Embedding từng chunk → vector 384 chiều (sentence-transformers)
+     6. Lưu vector vào PostgreSQL + pgvector
+     7. Cập nhật trạng thái Document → "completed"
+ -   8. Gửi XACK về Redis để xác nhận đã xử lý xong
+++<<<<<<< HEAD
+ +   8. Gửi XACK về Redis để xác nhận đã xử lý xong
+ +
+ +
+ +
+ +
+ +
+ +
+ +
+++=======
+++   8. Gửi XACK về Redis để xác nhận đã xử lý xong
+++>>>>>>> main

@@ -42,7 +42,7 @@ public class DocumentService {
         if (request.getFile() == null || request.getFile().isEmpty()) {
             throw new IllegalArgumentException("File is required");
         }
-        
+
         String originalName = request.getFile().getOriginalFilename();
         if (originalName == null || !originalName.toLowerCase().endsWith(".pdf")) {
             throw new IllegalArgumentException("Only PDF files are allowed");
@@ -53,7 +53,7 @@ public class DocumentService {
         String accountName = auth.getName();
         Account account = accountRepository.findByAccountName(accountName)
                 .orElseThrow(() -> new RuntimeException("Current account not found"));
-                
+
         Subject subject = null;
         if (request.getSubjectId() != null) {
             subject = subjectRepository.findById(request.getSubjectId())
@@ -73,7 +73,7 @@ public class DocumentService {
                 .account(account)
                 .subject(subject)
                 .build();
-                
+
         document = documentRepository.save(document);
         log.info("Saved Document metadata to DB with ID: {}", document.getDocId());
 
@@ -92,16 +92,13 @@ public class DocumentService {
                 .build();
     }
 
-    public List<DocumentDto> getAllDocuments() {
+    public List<DocumentDto> getUserDocuments() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String accountName = auth.getName();
         Account account = accountRepository.findByAccountName(accountName)
                 .orElseThrow(() -> new RuntimeException("Current account not found"));
 
-        List<Document> documents = documentRepository.findAll()
-                .stream()
-                .filter(doc -> !doc.getIsDelete() && doc.getAccount().getAccountID() == account.getAccountID())
-                .collect(Collectors.toList());
+        List<Document> documents = documentRepository.findByAccountAndIsDeleteFalse(account);
 
         return documents.stream().map(doc -> DocumentDto.builder()
                 .docId(doc.getDocId())
@@ -122,22 +119,22 @@ public class DocumentService {
     public void deleteDocument(Integer docId) {
         Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
-        
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (!document.getAccount().getAccountName().equals(auth.getName())) {
             throw new IllegalArgumentException("You don't have permission to delete this document");
         }
-        
+
         document.setIsDelete(true);
         document.setDocDeletedAt(LocalDateTime.now());
         documentRepository.save(document);
         log.info("Soft deleted document ID: {}", docId);
     }
 
-    public String getDocumentViewUrl(Integer docId) throws Exception {
+    public String getDocumentUrl(Integer docId) {
         Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
-        
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String currentUsername = auth.getName();
         
@@ -158,14 +155,17 @@ public class DocumentService {
             throw new IllegalArgumentException("Document has been deleted");
         }
 
-        // URL lưu trong DB là dạng "bucket_name/object_name"
-        String storageUrl = document.getDocStorageUrl();
-        String objectName = storageUrl;
-        if (storageUrl.contains("/")) {
-            objectName = storageUrl.substring(storageUrl.indexOf("/") + 1);
+        try {
+            String storageUrl = document.getDocStorageUrl();
+            String objectName = storageUrl;
+            if (storageUrl.contains("/")) {
+                objectName = storageUrl.substring(storageUrl.indexOf("/") + 1);
+            }
+            return minioService.getPresignedUrl(objectName);
+        } catch (Exception e) {
+            log.error("Failed to get document URL", e);
+            throw new RuntimeException("Could not retrieve document URL", e);
         }
-
-        return minioService.getPresignedUrl(objectName);
     }
 
     @Transactional
@@ -246,5 +246,45 @@ public class DocumentService {
                         .subjCode(document.getSubject().getSubjCode())
                         .build() : null)
                 .build();
+    }
+
+    public List<DocumentDto> getFilesByAccountId(Integer accountID) {
+        List<Document> documents = this.documentRepository.findByAccount_AccountID(accountID);
+        return documents.stream().map(doc -> DocumentDto.builder()
+                .docId(doc.getDocId())
+                .docOriginalName(doc.getDocOriginalName())
+                .docStorageUrl(doc.getDocStorageUrl())
+                .docFileSize(doc.getDocFileSize())
+                .docStatus(doc.getDocStatus())
+                .docUploadedAt(doc.getDocUploadedAt())
+                .build()).collect(Collectors.toList());
+    }
+
+    public List<DocumentDto> getAllDocumentsForAdmin() {
+        List<Document> documents = documentRepository.findAll()
+                .stream()
+                .filter(doc -> doc.getIsDelete() == null || !doc.getIsDelete())
+                .collect(Collectors.toList());
+
+        return documents.stream().map(doc -> {
+            SubjectDto subjectDto = null;
+            if (doc.getSubject() != null) {
+                subjectDto = SubjectDto.builder()
+                        .subjId(doc.getSubject().getSubjId())
+                        .subjName(doc.getSubject().getSubjName())
+                        .subjCode(doc.getSubject().getSubjCode())
+                        .build();
+            }
+
+            return DocumentDto.builder()
+                    .docId(doc.getDocId())
+                    .docOriginalName(doc.getDocOriginalName())
+                    .docStorageUrl(doc.getDocStorageUrl())
+                    .docFileSize(doc.getDocFileSize())
+                    .docStatus(doc.getDocStatus())
+                    .docUploadedAt(doc.getDocUploadedAt())
+                    .subject(subjectDto) 
+                    .build();
+        }).collect(Collectors.toList());
     }
 }

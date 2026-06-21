@@ -29,29 +29,15 @@ api.interceptors.response.use(
 export const loginApi = (data) => api.post('/auth/login', data);
 export const registerApi = (data) => api.post('/auth/register', data);
 
-// ===== DOCUMENTS =====
+// ===== DOCUMENTS =====\
+export const getDocumentsForAdmin = () => api.get('/documents/admin');
 export const getDocuments = () => api.get('/documents');
-export const createSubject = (name) => api.post('/subjects', { name });
-export const renameSubject = (id, name) => api.put(`/subjects/${id}/rename`, { name });
-export const deleteSubject = (id) => api.delete(`/subjects/${id}`);
-
-export const uploadDocument = (file, subjectId) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  if (subjectId) {
-    formData.append('subjectId', subjectId);
-  }
-  return api.post('/documents', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-};
+export const uploadDocument = (formData) => api.post('/documents', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' },
+});
 export const deleteDocument = (id) => api.delete(`/documents/${id}`);
 export const getDocumentViewUrl = (id) => api.get(`/documents/${id}/url`);
-export const renameDocument = (id, newName) => api.put(`/documents/${id}/rename`, { newName });
-export const moveDocument = (id, subjectId) => api.put(`/documents/${id}/move`, { subjectId });
-export const shareDocument = (data) => api.post('/documents/share', data);
-export const getSharedDocuments = () => api.get('/documents/shared-with-me');
-
+export const getFileByAccountId = (accountId) => api.get(`/documents/getfile/${accountId}`);
 // ===== SUBJECTS =====
 export const getSubjects = () => api.get('/subjects');
 
@@ -59,4 +45,24 @@ export const getSubjects = () => api.get('/subjects');
 export const getOrCreateChatSession = (docId) => api.post(`/chat/sessions?docId=${docId}`);
 export const sendChatMessage = (sessionId, message) => api.post(`/chat/sessions/${sessionId}/messages`, { docId: null, message });
 
+// ===== ACCOUNT =====
+
+// ===== ACCOUNT =====
+
+export const getUserById = (id) => api.get(`/account/getuser/${id}`);
+
+export const getAllUsers = (params) => api.get('/account/getalluser', { params });
+
+export const deleteUserById = (id) => api.delete(`/account/deleteuser/${id}`);
+
+export const searchAccount = (name, page = 0, size = 5) =>
+  api.get('/account/search', {
+    params: {
+      name,
+      page,
+      size
+    }
+  });
+// ===== USERPROFILE =====
+export const getUserProfileApi = (accountId) => api.get(`/user-profile/${accountId}`);
 export default api;

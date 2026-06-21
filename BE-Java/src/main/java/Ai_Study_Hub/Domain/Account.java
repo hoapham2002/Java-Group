@@ -41,6 +41,16 @@ public class Account {
     @Column(name = "account_name", nullable = false)
     private String accountName;
 
+    @NotNull(message = "Tên không được để trống")
+    @Size(max = 50, message = "Tên không được vượt quá 50 ký tự")
+    @Column(name = "first_name", length = 50)
+    private String firstName;
+
+    @NotNull(message = "Họ không được để trống")
+    @Size(max = 50, message = "Họ không được vượt quá 50 ký tự")
+    @Column(name = "last_name", length = 50)
+    private String lastName;
+
     @Column(nullable = false, unique = true)
     @NotBlank(message = "Email không được để trống")
     @Size(max = 255, message = "Email không được vượt quá 255 ký tự")

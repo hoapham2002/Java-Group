@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Mail, Lock, User, AlertCircle, Info, Loader } from 'lucide-react';
+import { BookOpen, Mail, Lock, User, AlertCircle, Loader } from 'lucide-react';
 import { loginApi, registerApi } from '../services/api';
 import './AuthPage.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,8 +10,16 @@ function AuthPage() {
 
   // Login state
   const [loginForm, setLoginForm] = useState({ accountName: '', password: '' });
+
   // Register state
-  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirmPassword: '' });
+  const [registerForm, setRegisterForm] = useState({
+    accountName: '',
+    email: '',
+    lastName: '',
+    firstName: '',
+    password: '',
+    confirmPassword: ''
+  });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +44,7 @@ function AuthPage() {
       const res = await loginApi({ accountName: loginForm.accountName, password: loginForm.password });
       login(res.data.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'User ID hoặc mật khẩu không đúng.');
+      setError(err.response?.data?.message || 'Tên tài khoản hoặc mật khẩu không đúng.');
     } finally {
       setLoading(false);
     }
@@ -45,8 +53,16 @@ function AuthPage() {
   // ===== REGISTER =====
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!registerForm.email || !registerForm.password || !registerForm.confirmPassword) {
-      setError('Vui lòng điền đầy đủ thông tin.');
+
+    if (
+      !registerForm.accountName ||
+      !registerForm.email ||
+      !registerForm.lastName ||
+      !registerForm.firstName ||
+      !registerForm.password ||
+      !registerForm.confirmPassword
+    ) {
+      setError('Vui lòng điền đầy đủ tất cả các thông tin.');
       return;
     }
     if (registerForm.password !== registerForm.confirmPassword) {
@@ -63,13 +79,34 @@ function AuthPage() {
     setLoading(true);
 
     try {
-      const res = await registerApi({ email: registerForm.email, password: registerForm.password });
-      const { token, accountName, email, role } = res.data.data;
-      setSuccessMsg(`Đăng ký thành công! User ID của bạn là: ${accountName}`);
-      // Auto login after 1.5s
+      await registerApi({
+        accountName: registerForm.accountName,
+        email: registerForm.email,
+        lastName: registerForm.lastName,
+        firstName: registerForm.firstName,
+        password: registerForm.password
+      });
+
+      // 1. Hiển thị thông báo thành công và thông báo chuyển hướng
+      setSuccessMsg(`Đăng ký thành công tài khoản: ${registerForm.accountName}! Đang quay lại trang đăng nhập...`);
+
+      // Lưu lại tên tài khoản vừa đăng ký thành công để tí điền sẵn vào form login
+      const registeredName = registerForm.accountName;
+
+      // 2. Chuyển hướng sau 2 giây
       setTimeout(() => {
-        login(res.data.data);
-      }, 1500);
+        // Điền sẵn tên tài khoản vừa tạo vào form Đăng nhập
+        setLoginForm({ accountName: registeredName, password: '' });
+
+        // Reset lại form đăng ký về trống
+        setRegisterForm({
+          accountName: '', email: '', lastName: '', firstName: '', password: '', confirmPassword: ''
+        });
+
+        // Chuyển tab sang login
+        handleTabSwitch('login');
+      }, 2000);
+
     } catch (err) {
       setError(err.response?.data?.message || 'Đăng ký thất bại, vui lòng thử lại.');
     } finally {
@@ -94,7 +131,7 @@ function AuthPage() {
         </div>
         <div className="auth-subtitle">
           {tab === 'login'
-            ? 'Đăng nhập bằng User ID và mật khẩu của bạn'
+            ? 'Đăng nhập bằng tên tài khoản và mật khẩu của bạn'
             : 'Đăng ký để bắt đầu học tập cùng AI'}
         </div>
 
@@ -125,13 +162,13 @@ function AuthPage() {
             )}
 
             <div className="form-group">
-              <label className="form-label">User ID</label>
+              <label className="form-label">Tên tài khoản</label>
               <div className="form-input-wrapper">
                 <User className="form-input-icon" />
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Nhập User ID (VD: 10000001)"
+                  placeholder="Nhập tên tài khoản của bạn"
                   value={loginForm.accountName}
                   onChange={(e) => setLoginForm({ ...loginForm, accountName: e.target.value })}
                 />
@@ -174,11 +211,22 @@ function AuthPage() {
               </div>
             )}
 
-            <div className="register-info">
-              <Info />
-              <span>User ID sẽ được tạo tự động theo dạng <strong>10000000</strong> và tăng dần. Hãy lưu lại để đăng nhập!</span>
+            {/* Tên tài khoản */}
+            <div className="form-group">
+              <label className="form-label">Tên tài khoản</label>
+              <div className="form-input-wrapper">
+                <User className="form-input-icon" />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ví dụ: khang123"
+                  value={registerForm.accountName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, accountName: e.target.value })}
+                />
+              </div>
             </div>
 
+            {/* Email */}
             <div className="form-group">
               <label className="form-label">Email</label>
               <div className="form-input-wrapper">
@@ -193,6 +241,37 @@ function AuthPage() {
               </div>
             </div>
 
+            {/* Họ */}
+            <div className="form-group">
+              <label className="form-label">Họ</label>
+              <div className="form-input-wrapper">
+                <User className="form-input-icon" />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Nhập họ của bạn"
+                  value={registerForm.lastName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, lastName: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Tên */}
+            <div className="form-group">
+              <label className="form-label">Tên</label>
+              <div className="form-input-wrapper">
+                <User className="form-input-icon" />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Nhập tên của bạn"
+                  value={registerForm.firstName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, firstName: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Mật khẩu */}
             <div className="form-group">
               <label className="form-label">Mật khẩu</label>
               <div className="form-input-wrapper">
@@ -207,6 +286,7 @@ function AuthPage() {
               </div>
             </div>
 
+            {/* Xác nhận mật khẩu */}
             <div className="form-group">
               <label className="form-label">Xác nhận mật khẩu</label>
               <div className="form-input-wrapper">

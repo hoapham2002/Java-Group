@@ -12,10 +12,3 @@ Redis Stream (rag_task_stream)
    6. Lưu vector vào PostgreSQL + pgvector
    7. Cập nhật trạng thái Document → "completed"
    8. Gửi XACK về Redis để xác nhận đã xử lý xong
-
-
-
-
-
-
-

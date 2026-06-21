@@ -36,9 +36,19 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        // Validate
+        // Validate Email
         if (accountRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("Email đã được sử dụng.");
+        }
+
+        // Validate Họ và Tên
+        String firstName = request.getFirstName();
+        String lastName = request.getLastName();
+        if (firstName == null || firstName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tên không được để trống.");
+        }
+        if (lastName == null || lastName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Họ không được để trống.");
         }
 
         // Auto-generate accountName: 10000000 + số lượng tài khoản hiện tại + 1
@@ -51,6 +61,8 @@ public class AuthService {
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .role(UserRole.user)
+                .firstName(firstName.trim())
+                .lastName(lastName.trim())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -60,8 +72,8 @@ public class AuthService {
 
         // Build UserProfile (liên kết 1-1)
         UserProfile profile = UserProfile.builder()
-                .firstName("")
-                .lastName("")
+                .firstName(firstName.trim())
+                .lastName(lastName.trim())
                 .account(account)
                 .build();
 
@@ -74,8 +86,11 @@ public class AuthService {
 
         return AuthResponse.builder()
                 .token(token)
+                .accountID(account.getAccountID())
                 .accountName(accountName)
                 .email(account.getEmail())
+                .firstName(profile.getFirstName())
+                .lastName(profile.getLastName())
                 .role(account.getRole().name())
                 .build();
     }
@@ -98,8 +113,11 @@ public class AuthService {
 
         return AuthResponse.builder()
                 .token(token)
+                .accountID(account.getAccountID())
                 .accountName(account.getAccountName())
                 .email(account.getEmail())
+                .firstName(account.getFirstName())
+                .lastName(account.getLastName())
                 .role(account.getRole().name())
                 .build();
     }

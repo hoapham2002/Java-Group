@@ -9,22 +9,23 @@ export const AuthProvider = ({ children }) => {
     if (!token) return null;
     return {
       token,
+      accountID: localStorage.getItem('accountID'), // <-- THÊM DÒNG NÀY: Lấy accountID từ storage
       accountName: localStorage.getItem('accountName'),
       email: localStorage.getItem('email'),
       role: localStorage.getItem('role'),
     };
   });
-  
+
   const navigate = useNavigate();
 
   const login = (userData) => {
     localStorage.setItem('token', userData.token);
+    localStorage.setItem('accountID', userData.accountID); // <-- THÊM DÒNG NÀY: Lưu accountID xuống storage
     localStorage.setItem('accountName', userData.accountName);
     localStorage.setItem('email', userData.email);
     localStorage.setItem('role', userData.role);
     setUser(userData);
   };
-
   const logout = () => {
     localStorage.clear();
     setUser(null);
