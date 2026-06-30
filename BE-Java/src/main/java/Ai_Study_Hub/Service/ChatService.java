@@ -138,4 +138,31 @@ public class ChatService {
                 .messages(messageDtos)
                 .build();
     }
+
+    public List<ChatSessionDto> getAllSessionsForAdmin() {
+        List<ChatSession> sessions = chatSessionRepository.findAllSessionsForAdmin();
+        
+        return sessions.stream().map(session -> {
+            // Sử dụng hàm mapToDto có sẵn của bạn để lấy cấu trúc cơ bản
+            ChatSessionDto dto = mapToDto(session);
+            
+            // Lấy username từ đối tượng Account liên kết (gán tạm vào trường phù hợp hoặc xử lý riêng)
+            if (session.getAccount() != null) {
+                // Nếu ChatSessionDto chưa có trường username, bạn có thể gán tạm qua sessionTitle để hiển thị, 
+                // hoặc tốt nhất là vào file ChatSessionDto.java thêm 2 thuộc tính: String username và String docName;
+                dto.setSessionTitle(session.getSessionTitle() + " (User: " + session.getAccount().getAccountName() + ")");
+            }
+            
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    // Xóa phiên chat theo yêu cầu của Admin (Chuyển Long sang Integer để khớp với Repository của bạn)
+    @Transactional
+    public void deleteSessionByAdmin(Integer sessionId) {
+        if (!chatSessionRepository.existsById(sessionId)) {
+            throw new RuntimeException("Không tìm thấy phiên chat mang ID: " + sessionId);
+        }
+        chatSessionRepository.deleteById(sessionId);
+    }
 }

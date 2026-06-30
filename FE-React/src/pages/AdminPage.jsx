@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Users, FileText, HardDrive, Cpu, ShieldAlert,
-    Trash2, Search, CheckCircle
+    Trash2, Search, CheckCircle, MessageSquare, Calendar, User
 } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { getAllUsers, searchAccount, getDocumentsForAdmin, deleteDocument, deleteUserById } from '../services/api';
+import { 
+    getAllUsers, searchAccount, getDocumentsForAdmin, deleteDocument, deleteUserById,
+    getAllChatSessionsForAdmin, deleteChatSessionApi
+} from '../services/api';
 import './AdminPage.css';
 
 function AdminPage() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const [usersList, setUsersList] = useState([]);
     const [filesList, setFilesList] = useState([]);
-
     const [userMeta, setUserMeta] = useState({ page: 1, pageSize: 5, total: 0 });
     const [stats, setStats] = useState({
         totalUsers: 0,
@@ -22,7 +23,20 @@ function AdminPage() {
         totalApiCalls: 0
     });
 
-    // 1. Fetch danh sách User (Bọc useCallback để tránh loop)
+    // Mock data Users
+    const [usersList, setUsersList] = useState([
+        { accountId: 1, accountName: "hoa_pham", email: "hoa.pham@uth.edu.vn", role: "USER", totalStorageUsed: 524288000, totalApiCalls: 142 },
+        { accountId: 2, accountName: "nguyen_van_a", email: "vana@gmail.com", role: "USER", totalStorageUsed: 15728640, totalApiCalls: 28 },
+        { accountId: 3, accountName: "admin_studyhub", email: "admin@studyhub.com", role: "ADMIN", totalStorageUsed: 0, totalApiCalls: 5 }
+    ]);
+
+    // BỔ SUNG 1: State và Mock Data cho Chat Sessions để không bị trắng màn hình
+    const [chatSessionsList, setChatSessionsList] = useState([
+        { sessionId: 101, sessionTitle: "Giải bài tập toán giải tích 1", username: "hoa_pham", docName: "giai_tich_chương2.pdf", createdAt: "2026-06-25T14:30:00Z" },
+        { sessionId: 102, sessionTitle: "Hỏi đáp về luật doanh nghiệp", username: "nguyen_van_a", docName: "LuatDoanhNghiep2020.docx", createdAt: "2026-06-28T09:15:00Z" }
+    ]);
+
+    // 1. Fetch danh sách User
     const fetchUsersData = useCallback(async (page = 0, size = 5) => {
         try {
             const res = await getAllUsers({ page, size });
@@ -43,19 +57,15 @@ function AdminPage() {
         }
     }, []);
 
-    // 2. Fetch danh sách toàn bộ Files hệ thống (An toàn, chống Loop vĩnh viễn)
+    // 2. Fetch danh sách toàn bộ Files hệ thống
     const fetchFilesData = useCallback(async () => {
         try {
             const res = await getDocumentsForAdmin();
             if (res?.data) {
-                // Phân rã cấu trúc chuẩn từ ApiResponse<List<DocumentDto>> của Spring Boot
                 let docs = res.data?.data?.result || res.data?.data || res.data?.result || res.data;
-
-                // Nếu backend trả về object chứa mảng bên trong result
                 if (docs && typeof docs === 'object' && !Array.isArray(docs)) {
                     if (Array.isArray(docs.result)) docs = docs.result;
                 }
-
                 if (Array.isArray(docs)) {
                     setFilesList(docs);
                     setStats(prev => ({ ...prev, totalFiles: docs.length }));
@@ -68,12 +78,11 @@ function AdminPage() {
             }
         } catch (error) {
             console.error("Lỗi khi lấy danh sách tài liệu toàn hệ thống:", error);
-            // KHI LỖI 500: Gán mảng rỗng ngay để chặn re-render kích hoạt loop
             setFilesList([]);
         }
     }, []);
 
-    // Điều phối gọi dữ liệu khi Tab thay đổi (Chỉ gọi duy nhất khi activeTab đổi)
+    // Điều phối gọi dữ liệu khi Tab thay đổi
     useEffect(() => {
         if (activeTab === 'dashboard') {
             fetchUsersData(0, 5);
@@ -85,7 +94,7 @@ function AdminPage() {
         }
     }, [activeTab, fetchUsersData, fetchFilesData]);
 
-    // Thêm Debounce cho tìm kiếm User
+    // Debounce cho tìm kiếm User
     useEffect(() => {
         if (activeTab !== 'users') return;
 
@@ -191,6 +200,33 @@ function AdminPage() {
         }
     };
 
+    // BỔ SUNG 2: Định nghĩa hàm handleDeleteChatSession để không bị lỗi gọi hàm
+    const handleDeleteChatSession = async (sessionId) => {
+        const result = await Swal.fire({
+            title: 'Xóa phiên chat?',
+            text: `Bạn có chắc muốn xóa lịch sử phiên chat #${sessionId} này không?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Xóa',
+            cancelButtonText: 'Hủy'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                // Gọi API xóa thật xuống backend
+                const res = await deleteChatSessionApi(sessionId);
+                if (res) {
+                    Swal.fire('Đã xóa!', 'Phiên trò chuyện đã được gỡ khỏi Database.', 'success');
+                    fetchChatSessionsData(); // Tải lại danh sách mới nhất từ DB
+                }
+            } catch (error) {
+                Swal.fire('Thất bại!', 'Không thể xóa phiên chat này, vui lòng thử lại.', 'error');
+            }
+        }
+    };
+
     const formatBytes = (bytes) => {
         if (!bytes || bytes === 0) return '0 Bytes';
         const k = 1024;
@@ -199,10 +235,43 @@ function AdminPage() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    // Lọc danh sách file theo ô tìm kiếm trên local Client
     const filteredFiles = Array.isArray(filesList)
         ? filesList.filter(f => (f?.docOriginalName || '').toLowerCase().includes(searchQuery.toLowerCase()))
         : [];
+
+    // ==========================================
+    // BỔ SUNG MỚI: Hàm fetch dữ liệu Chat Sessions thật từ DB
+    // ==========================================
+    const fetchChatSessionsData = useCallback(async () => {
+        try {
+            const res = await getAllChatSessionsForAdmin();
+            // Kiểm tra cấu trúc bọc dữ liệu của Spring Boot (thường là res.data.data hoặc res.data.data.result)
+            const chatData = res?.data?.data?.result || res?.data?.data || res?.data;
+            
+            if (Array.isArray(chatData)) {
+                setChatSessionsList(chatData);
+            } else {
+                setChatSessionsList([]);
+            }
+        } catch (error) {
+            console.error("Lỗi khi lấy danh sách phiên chat từ DB:", error);
+            setChatSessionsList([]); // Thất bại thì trả về mảng rỗng thay vì giữ data mock
+        }
+    }, []);
+
+    // SỬA LẠI: Điều phối gọi dữ liệu khi Tab thay đổi
+    useEffect(() => {
+        if (activeTab === 'dashboard') {
+            fetchUsersData(0, 5);
+            fetchFilesData();
+        } else if (activeTab === 'users') {
+            fetchUsersData(0, 5);
+        } else if (activeTab === 'files') {
+            fetchFilesData();
+        } else if (activeTab === 'chat') { 
+            fetchChatSessionsData(); // <-- SỬA TẠI ĐÂY: Gọi hàm fetch dữ liệu thật thay vì để trống
+        }
+    }, [activeTab, fetchUsersData, fetchFilesData, fetchChatSessionsData]); // Thêm fetchChatSessionsData vào dependency
 
     return (
         <div className="admin-container">
@@ -222,6 +291,9 @@ function AdminPage() {
                     <button className={`menu-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => { setActiveTab('files'); setSearchQuery(''); }}>
                         <FileText size={18} /> Quản lý tài liệu
                     </button>
+                    <button className={`menu-item ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => { setActiveTab('chat'); setSearchQuery(''); }}>
+                        <MessageSquare size={18} /> Giám sát Chat AI
+                    </button>
                 </nav>
             </div>
 
@@ -232,6 +304,7 @@ function AdminPage() {
                         {activeTab === 'dashboard' && 'Bảng Điều Khiển Hệ Thống'}
                         {activeTab === 'users' && 'Quản Lý Người Dùng'}
                         {activeTab === 'files' && 'Kho Lưu Trữ Toàn Hệ Thống'}
+                        {activeTab === 'chat' && 'Giám Sát & Kiểm Toán Chat AI'}
                     </h2>
                 </header>
 
@@ -278,7 +351,7 @@ function AdminPage() {
                             <Search size={18} />
                             <input
                                 type="text"
-                                placeholder="Tìm theo tên tài khoản thực tế bằng API..."
+                                placeholder="Tìm theo tên tài khoản..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -290,19 +363,31 @@ function AdminPage() {
                                     <th>Tên tài khoản</th>
                                     <th>Email</th>
                                     <th>Vai trò</th>
+                                    <th>Lưu trữ cá nhân</th>
+                                    <th>API Calls (AI)</th>
                                     <th>Hành động</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {Array.isArray(usersList) && usersList.length > 0 ? (
                                     usersList.map(u => (
-                                        <tr key={u.accountID || u.accountId}>
-                                            <td>#{u.accountID || u.accountId}</td>
+                                        <tr key={u.accountId}>
+                                            <td>#{u.accountId}</td>
                                             <td><strong>{u.accountName}</strong></td>
                                             <td>{u.email}</td>
                                             <td><span className={`role-tag ${u.role}`}>{u.role}</span></td>
                                             <td>
-                                                <button className="btn-delete-action" onClick={() => handleDeleteUserAction(u.accountID || u.accountId)}>
+                                                <span className="user-storage-text">
+                                                    {formatBytes(u.totalStorageUsed)}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className="user-api-badge">
+                                                    {u.totalApiCalls || 0} lượt
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <button className="btn-delete-action" onClick={() => handleDeleteUserAction(u.accountId)}>
                                                     <Trash2 size={14} /> Xóa
                                                 </button>
                                             </td>
@@ -310,7 +395,7 @@ function AdminPage() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                        <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
                                             Không tìm thấy tài khoản nào phù hợp
                                         </td>
                                     </tr>
@@ -363,6 +448,90 @@ function AdminPage() {
                                     <tr>
                                         <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
                                             Không có tài liệu nào hiển thị hoặc không tìm thấy kết quả phù hợp
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* TAB 4: GIÁM SÁT CHAT AI */}
+                {activeTab === 'chat' && (
+                    <div className="table-wrapper">
+                        <div className="chat-audit-info-bar">
+                            <p>💡 <strong>Mẹo quản trị:</strong> Admin có quyền kiểm tra và xóa mềm các phiên chat tiêu tốn quá nhiều Token hoặc có nội dung tiêu cực (Spam/Toxic).</p>
+                        </div>
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>ID Phiên</th>
+                                    <th>Tiêu đề / Ngữ cảnh</th>
+                                    <th>Người sử dụng</th>
+                                    <th>Tài liệu đính kèm</th>
+                                    <th>Thời gian tạo</th>
+                                    <th>Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {chatSessionsList.length > 0 ? (
+                                    chatSessionsList.map(session => {
+                                        // Tách chuỗi từ sessionTitle nếu có dạng "Chat với [Tên_File] (User: [ID])"
+                                        const titleRaw = session.sessionTitle || '';
+                                        
+                                        // Trích xuất tên file (nằm sau chữ "Chat với " và trước dấu " (User:")
+                                        let detectedDoc = 'Không đính kèm file';
+                                        if (titleRaw.includes('Chat với ')) {
+                                            detectedDoc = titleRaw.split('Chat với ')[1]?.split(' (User:')[0] || 'Không đính kèm file';
+                                        }
+
+                                        // Trích xuất thông tin User ID từ chuỗi
+                                        let detectedUser = 'Ẩn danh';
+                                        if (titleRaw.includes('(User: ')) {
+                                            detectedUser = 'ID: ' + titleRaw.split('(User: ')[1]?.replace(')', '');
+                                        } else if (titleRaw.includes('(User:')) {
+                                            detectedUser = 'ID: ' + titleRaw.split('(User:')[1]?.replace(')', '');
+                                        }
+
+                                        // Ưu tiên dùng Object lồng từ DB, nếu không có thì dùng đồ "bóc tách" ở trên
+                                        const displayUser = session.account?.accountName || session.accountName || detectedUser;
+                                        const displayDoc = session.document?.docOriginalName || session.docOriginalName || detectedDoc;
+
+                                        return (
+                                            <tr key={session.sessionId}>
+                                                <td>#{session.sessionId}</td>
+                                                <td>
+                                                    <div className="chat-title-cell">
+                                                        <MessageSquare size={14} className="inline-icon" />
+                                                        {/* Hiển thị tiêu đề ngắn gọn hoặc giữ nguyên tùy bạn */}
+                                                        <strong>{session.sessionTitle || 'Trò chuyện không tiêu đề'}</strong>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className="chat-user-info">
+                                                        <User size={14} className="inline-icon" /> {displayUser}
+                                                    </span>
+                                                </td>
+                                                <td className="file-name-cell" title={displayDoc}>
+                                                    {displayDoc}
+                                                </td>
+                                                <td>
+                                                    <span className="chat-time-info">
+                                                        <Calendar size={14} className="inline-icon" /> {String(session.createdAt || '').substring(0, 10)}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <button className="btn-delete-action" onClick={() => handleDeleteChatSession(session.sessionId)}>
+                                                        <Trash2 size={14} /> Xóa phiên
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                            Không tìm thấy phiên chat AI nào trên hệ thống
                                         </td>
                                     </tr>
                                 )}
