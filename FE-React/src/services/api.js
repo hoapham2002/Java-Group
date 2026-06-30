@@ -60,6 +60,9 @@ export const deleteSubject = (id) => api.delete(`/subjects/${id}`);
 export const getOrCreateChatSession = (docId) => api.post(`/chat/sessions?docId=${docId}`);
 export const sendChatMessage = (sessionId, message) => api.post(`/chat/sessions/${sessionId}/messages`, { docId: null, message });
 
+export const getAllChatSessionsForAdmin = () => api.get('/chat/admin/sessions');
+export const deleteChatSessionApi = (sessionId) => api.delete(`/chat/admin/sessions/${sessionId}`);
+
 // ===== ACCOUNT =====
 
 // ===== ACCOUNT =====
