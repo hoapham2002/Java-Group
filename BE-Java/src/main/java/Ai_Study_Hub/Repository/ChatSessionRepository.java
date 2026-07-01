@@ -10,11 +10,14 @@ import java.util.List;
 
 @Repository
 public interface ChatSessionRepository extends JpaRepository<ChatSession, Integer> {
+    
     Optional<ChatSession> findTopByDocument_DocIdAndAccount_AccountIDOrderBySessionCreatedAtDesc(Integer docId, Integer accountId);
-    @Query("SELECT s FROM ChatSession s " +
+
+    // GỘP CHUNG: Tải toàn bộ Account, Document và danh sách Messages trong 1 câu Query duy nhất
+    @Query("SELECT DISTINCT s FROM ChatSession s " +
            "LEFT JOIN FETCH s.account " +
            "LEFT JOIN FETCH s.document " +
+           "LEFT JOIN FETCH s.messages " + 
            "ORDER BY s.sessionCreatedAt DESC")
     List<ChatSession> findAllSessionsForAdmin();
 }
-

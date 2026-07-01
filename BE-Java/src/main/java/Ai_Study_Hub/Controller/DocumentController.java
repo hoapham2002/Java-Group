@@ -40,7 +40,7 @@ public class DocumentController {
     }
 
     @GetMapping("/{id}/url")
-    public ResponseEntity<ApiResponse<String>> getDocumentUrl(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<String>> getDocumentUrl(@PathVariable("id") Integer id) {
         String url = documentService.getDocumentUrl(id);
         return ResponseEntity.ok(ApiResponse.success("Success", url));
     }
@@ -63,7 +63,7 @@ public class DocumentController {
 
     @GetMapping("/getFile/{accountID}")
     public ResponseEntity<ApiResponse<List<DocumentDto>>> getFileByAccountId(
-            @PathVariable("accountID") Integer accountID) {
+            @PathVariable Integer accountID) {
         List<DocumentDto> documents = this.documentService.getFilesByAccountId(accountID);
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy danh sách file theo tài khoản thành công", documents));

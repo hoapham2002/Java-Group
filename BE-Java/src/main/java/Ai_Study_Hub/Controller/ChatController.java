@@ -24,7 +24,7 @@ public class ChatController {
 
     @PostMapping("/sessions")
     public ResponseEntity<ApiResponse<ChatSessionDto>> getOrCreateSession(
-            @RequestParam Integer docId,
+            @RequestParam("docId") Integer docId,
             Authentication authentication) {
         String accountName = authentication.getName();
         ChatSessionDto session = chatService.getOrCreateSession(docId, accountName);
@@ -33,7 +33,7 @@ public class ChatController {
 
     @PostMapping("/sessions/{sessionId}/messages")
     public ResponseEntity<ApiResponse<ChatMessageDto>> sendMessage(
-            @PathVariable Integer sessionId,
+            @PathVariable("sessionId") Integer sessionId,
             @RequestBody ChatRequest request,
             Authentication authentication) {
         String accountName = authentication.getName();

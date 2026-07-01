@@ -129,6 +129,9 @@ public class ChatService {
                         .build())
                     .collect(Collectors.toList())
                 : new ArrayList<>();
+        long aiCallsInSession = messageDtos.stream()
+        .filter(m -> m.getRole() == MessageRole.ai) // Đổi thành role AI của bạn
+        .count();
 
         return ChatSessionDto.builder()
                 .sessionId(session.getSessionId())
@@ -140,22 +143,33 @@ public class ChatService {
     }
 
     public List<ChatSessionDto> getAllSessionsForAdmin() {
-        List<ChatSession> sessions = chatSessionRepository.findAllSessionsForAdmin();
+    List<ChatSession> sessions = chatSessionRepository.findAllSessionsForAdmin();
+    
+    return sessions.stream().map(session -> {
+        // 1. Sử dụng hàm mapToDto có sẵn của bạn
+        ChatSessionDto dto = mapToDto(session);
         
-        return sessions.stream().map(session -> {
-            // Sử dụng hàm mapToDto có sẵn của bạn để lấy cấu trúc cơ bản
-            ChatSessionDto dto = mapToDto(session);
+        // 2. Map chuẩn theo kiểu dữ liệu MessageRole của ChatMessageDto
+        if (session.getMessages() != null) {
+            List<ChatMessageDto> messageDtos = session.getMessages().stream()
+                .map(msg -> ChatMessageDto.builder()
+                    .messId(msg.getMessId())
+                    .role(msg.getMessRole()) // ✨ TRUYỀN THẲNG ENUM VÀO ĐÂY, không biến đổi thành String nữa để hết lỗi ép kiểu!
+                    .content(msg.getMessContent())
+                    .createdAt(msg.getMessCreatedAt())
+                    .build())
+                .toList();
             
-            // Lấy username từ đối tượng Account liên kết (gán tạm vào trường phù hợp hoặc xử lý riêng)
-            if (session.getAccount() != null) {
-                // Nếu ChatSessionDto chưa có trường username, bạn có thể gán tạm qua sessionTitle để hiển thị, 
-                // hoặc tốt nhất là vào file ChatSessionDto.java thêm 2 thuộc tính: String username và String docName;
-                dto.setSessionTitle(session.getSessionTitle() + " (User: " + session.getAccount().getAccountName() + ")");
-            }
-            
-            return dto;
-        }).collect(Collectors.toList());
-    }
+            dto.setMessages(messageDtos);
+        }
+        
+        if (session.getAccount() != null) {
+            dto.setSessionTitle(session.getSessionTitle() + " (User: " + session.getAccount().getAccountID() + ")");
+        }
+        
+        return dto;
+    }).collect(Collectors.toList());
+}
 
     // Xóa phiên chat theo yêu cầu của Admin (Chuyển Long sang Integer để khớp với Repository của bạn)
     @Transactional

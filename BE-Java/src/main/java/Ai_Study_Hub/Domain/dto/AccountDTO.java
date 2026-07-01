@@ -18,4 +18,5 @@ public class AccountDTO {
     private UserRole role;
     private String firstName;
     private String lastName;
+    private Integer totalApiCalls;
 }

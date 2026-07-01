@@ -239,9 +239,8 @@ function AdminPage() {
         ? filesList.filter(f => (f?.docOriginalName || '').toLowerCase().includes(searchQuery.toLowerCase()))
         : [];
 
-    // ==========================================
-    // BỔ SUNG MỚI: Hàm fetch dữ liệu Chat Sessions thật từ DB
-    // ==========================================
+
+    // BỔ SUNG: Hàm fetch dữ liệu Chat Sessions thật từ DB
     const fetchChatSessionsData = useCallback(async () => {
         try {
             const res = await getAllChatSessionsForAdmin();
@@ -250,6 +249,15 @@ function AdminPage() {
             
             if (Array.isArray(chatData)) {
                 setChatSessionsList(chatData);
+                let systemTotalCalls = 0;
+                chatData.forEach(session => {
+                    if (Array.isArray(session.messages)) {
+                        systemTotalCalls += session.messages.filter(m => m.role === 'ai').length;
+                    }
+                });
+
+                // Cập nhật lên ô Card ở Dashboard
+                setStats(prev => ({ ...prev, totalApiCalls: systemTotalCalls }));
             } else {
                 setChatSessionsList([]);
             }
@@ -272,6 +280,34 @@ function AdminPage() {
             fetchChatSessionsData(); // <-- SỬA TẠI ĐÂY: Gọi hàm fetch dữ liệu thật thay vì để trống
         }
     }, [activeTab, fetchUsersData, fetchFilesData, fetchChatSessionsData]); // Thêm fetchChatSessionsData vào dependency
+
+    const fetchAdminData = useCallback(async () => {
+    try {
+        // Gọi hàm handleGetAllUser từ hệ thống API phân trang của bạn
+        const userRes = await getAllUsers(); // Đảm bảo hàm này mapping đúng vào endpoint /handleGetAllUser
+        const userData = userRes?.data?.data?.result || userRes?.data?.data || userRes?.data || [];
+
+        if (Array.isArray(userData)) {
+            setUsersList(userData); // Set thẳng danh sách mà không cần tính toán thủ công bằng JS ở FE nữa
+        }
+
+        // Tính toán tổng số API call toàn hệ thống cho ô Dashboard
+        const totalSystemCalls = userData.reduce((sum, u) => sum + (u.totalApiCalls || 0), 0);
+        
+        setStats(prev => ({
+            ...prev,
+            totalUsers: userData.length,
+            totalApiCalls: totalSystemCalls
+        }));
+    } catch (error) {
+        console.error("Lỗi khi tải dữ liệu trang Admin:", error);
+    }
+}, []);
+
+    // Tự động gọi nạp dữ liệu khi component mount
+    useEffect(() => {
+        fetchAdminData();
+    }, [fetchAdminData]);
 
     return (
         <div className="admin-container">
@@ -469,6 +505,7 @@ function AdminPage() {
                                     <th>Tiêu đề / Ngữ cảnh</th>
                                     <th>Người sử dụng</th>
                                     <th>Tài liệu đính kèm</th>
+                                    <th>Số API Call (AI)</th>
                                     <th>Thời gian tạo</th>
                                     <th>Hành động</th>
                                 </tr>
@@ -497,6 +534,10 @@ function AdminPage() {
                                         const displayUser = session.account?.accountName || session.accountName || detectedUser;
                                         const displayDoc = session.document?.docOriginalName || session.docOriginalName || detectedDoc;
 
+                                        const aiCallCount = Array.isArray(session.messages) 
+                                        ? session.messages.filter(msg => msg.role === 'ai').length 
+                                        : 0;
+
                                         return (
                                             <tr key={session.sessionId}>
                                                 <td>#{session.sessionId}</td>
@@ -514,6 +555,11 @@ function AdminPage() {
                                                 </td>
                                                 <td className="file-name-cell" title={displayDoc}>
                                                     {displayDoc}
+                                                </td>
+                                                <td>
+                                                    <span className="user-api-badge">
+                                                        {aiCallCount} lượt
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     <span className="chat-time-info">
