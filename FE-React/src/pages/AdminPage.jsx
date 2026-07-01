@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Calendar,
   User,
+  LogOut,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import {
@@ -22,9 +23,11 @@ import {
   getAllChatSessionsForAdmin,
   deleteChatSessionApi,
 } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 import "./AdminPage.css";
 
 function AdminPage() {
+  const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -449,6 +452,34 @@ function AdminPage() {
             {activeTab === "files" && "Kho Lưu Trữ Toàn Hệ Thống"}
             {activeTab === "chat" && "Giám Sát & Kiểm Toán Chat AI"}
           </h2>
+          <button
+            className="btn-logout"
+            onClick={logout}
+            title="Đăng xuất"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.6rem 1.2rem",
+              backgroundColor: "#ef4444",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "0.9rem",
+              fontWeight: "500",
+              transition: "all 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.backgroundColor = "#dc2626")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.backgroundColor = "#ef4444")
+            }
+          >
+            <LogOut size={18} />
+            <span>Đăng xuất</span>
+          </button>
         </header>
 
         {/* TAB 1: DASHBOARD */}
