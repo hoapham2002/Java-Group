@@ -19,4 +19,5 @@ public class AccountDTO {
     private String firstName;
     private String lastName;
     private Integer totalApiCalls;
+    private Long totalStorageUsed; // Tổng dung lượng file đã upload (bytes)
 }

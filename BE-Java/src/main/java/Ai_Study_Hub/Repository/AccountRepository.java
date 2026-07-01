@@ -36,4 +36,11 @@ public interface AccountRepository extends JpaRepository<Account, Integer>, JpaS
     Integer countAiCallsByAccountId(
             @Param("accountId") Integer accountId,
             @Param("role") MessageRole role);
+    
+    @Query("""
+    SELECT COALESCE(SUM(d.docFileSize), 0)
+    FROM Document d
+    WHERE d.account.accountID = :accountId
+    """)
+    Long sumStorageByAccountId(@Param("accountId") Integer accountId);
 }
