@@ -50,19 +50,22 @@ public class AccountService {
             pageAccount = this.accountRepository.findAll(spec, pageable);
         }
 
-        // 🌟 CẬP NHẬT: Duyệt danh sách và đếm số lượng tin nhắn AI động từ Database
+        // 🌟 CẬP NHẬT: Duyệt danh sách và đếm số lượng tin nhắn AI + tính storage động từ Database
         List<AccountDTO> listDTO = pageAccount.getContent().stream()
                 .map(account -> {
                     Integer aiCalls = this.accountRepository.countAiCallsByAccountId(
                         account.getAccountID(),
                         MessageRole.ai
                     );
+                    Long storageUsed = this.accountRepository.sumStorageByAccountId(account.getAccountID());
+                    
                     return AccountDTO.builder()
                             .accountID(account.getAccountID())
                             .accountName(account.getAccountName())
                             .email(account.getEmail())
                             .role(account.getRole())
-                            .totalApiCalls(aiCalls != null ? aiCalls : 0) // ✨ Ném dữ liệu thật cho FE đếm
+                            .totalApiCalls(aiCalls != null ? aiCalls : 0)
+                            .totalStorageUsed(storageUsed != null ? storageUsed : 0L) // ✨ Thêm storage
                             .build();
                 })
                 .collect(Collectors.toList());
@@ -90,18 +93,21 @@ public class AccountService {
     public ResultPaginationDTO searchByAccountName(String accountName, Pageable pageable) {
         Page<Account> pageAccount = accountRepository.findByAccountNameContainingIgnoreCase(accountName, pageable);
 
-        // 🌟 CẬP NHẬT: Thêm đếm số lượt gọi khi Admin thực hiện tìm kiếm User theo tên
+        // 🌟 CẬP NHẬT: Thêm đếm số lượt gọi và storage khi Admin thực hiện tìm kiếm User theo tên
         List<AccountDTO> listDTO = pageAccount.getContent().stream().map(account -> {
             Integer aiCalls = this.accountRepository.countAiCallsByAccountId(
                 account.getAccountID(),
                 MessageRole.ai
             );
+            Long storageUsed = this.accountRepository.sumStorageByAccountId(account.getAccountID());
+            
             AccountDTO dto = new AccountDTO();
             dto.setAccountID(account.getAccountID());
             dto.setAccountName(account.getAccountName());
             dto.setEmail(account.getEmail());
             dto.setRole(account.getRole()); 
-            dto.setTotalApiCalls(aiCalls != null ? aiCalls : 0); // ✨ Gán dữ liệu khi tìm kiếm
+            dto.setTotalApiCalls(aiCalls != null ? aiCalls : 0);
+            dto.setTotalStorageUsed(storageUsed != null ? storageUsed : 0L); // ✨ Thêm storage
             return dto;
         }).collect(Collectors.toList());
 
