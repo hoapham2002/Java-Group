@@ -14,6 +14,7 @@ import Ai_Study_Hub.Domain.dto.AccountDTO;
 import Ai_Study_Hub.Domain.pagination.Meta;
 import Ai_Study_Hub.Domain.pagination.ResultPaginationDTO;
 import Ai_Study_Hub.Repository.AccountRepository;
+import Ai_Study_Hub.Domain.enums.MessageRole;
 
 @Service
 public class AccountService {
@@ -25,12 +26,17 @@ public class AccountService {
 
     public Optional<AccountDTO> getUserByID(Integer accountID) {
         return this.accountRepository.findById(accountID)
-                .map(account -> AccountDTO.builder()
-                        .accountID(account.getAccountID())
-                        .accountName(account.getAccountName())
-                        .email(account.getEmail())
-                        .role(account.getRole())
-                        .build());
+                .map(account -> {
+                    // Đếm số lượt gọi AI cho API chi tiết 1 user
+                    Integer aiCalls = this.accountRepository.countAiCallsByAccountId(account.getAccountID(), MessageRole.ai);
+                    return AccountDTO.builder()
+                            .accountID(account.getAccountID())
+                            .accountName(account.getAccountName())
+                            .email(account.getEmail())
+                            .role(account.getRole())
+                            .totalApiCalls(aiCalls != null ? aiCalls : 0) // Gán vào DTO
+                            .build();
+                });
     }
 
     @Transactional(readOnly = true)
@@ -44,13 +50,21 @@ public class AccountService {
             pageAccount = this.accountRepository.findAll(spec, pageable);
         }
 
+        // 🌟 CẬP NHẬT: Duyệt danh sách và đếm số lượng tin nhắn AI động từ Database
         List<AccountDTO> listDTO = pageAccount.getContent().stream()
-                .map(account -> AccountDTO.builder()
-                        .accountID(account.getAccountID())
-                        .accountName(account.getAccountName())
-                        .email(account.getEmail())
-                        .role(account.getRole())
-                        .build())
+                .map(account -> {
+                    Integer aiCalls = this.accountRepository.countAiCallsByAccountId(
+                        account.getAccountID(),
+                        MessageRole.ai
+                    );
+                    return AccountDTO.builder()
+                            .accountID(account.getAccountID())
+                            .accountName(account.getAccountName())
+                            .email(account.getEmail())
+                            .role(account.getRole())
+                            .totalApiCalls(aiCalls != null ? aiCalls : 0) // ✨ Ném dữ liệu thật cho FE đếm
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         Meta mt = new Meta();
@@ -76,13 +90,18 @@ public class AccountService {
     public ResultPaginationDTO searchByAccountName(String accountName, Pageable pageable) {
         Page<Account> pageAccount = accountRepository.findByAccountNameContainingIgnoreCase(accountName, pageable);
 
-        // 2. Map danh sách Entity sang danh sách AccountDTO theo chuẩn của bạn
+        // 🌟 CẬP NHẬT: Thêm đếm số lượt gọi khi Admin thực hiện tìm kiếm User theo tên
         List<AccountDTO> listDTO = pageAccount.getContent().stream().map(account -> {
+            Integer aiCalls = this.accountRepository.countAiCallsByAccountId(
+                account.getAccountID(),
+                MessageRole.ai
+            );
             AccountDTO dto = new AccountDTO();
             dto.setAccountID(account.getAccountID());
             dto.setAccountName(account.getAccountName());
             dto.setEmail(account.getEmail());
-            dto.setRole(account.getRole()); //
+            dto.setRole(account.getRole()); 
+            dto.setTotalApiCalls(aiCalls != null ? aiCalls : 0); // ✨ Gán dữ liệu khi tìm kiếm
             return dto;
         }).collect(Collectors.toList());
 
